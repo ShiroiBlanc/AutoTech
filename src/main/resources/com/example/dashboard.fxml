@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox spacing="10" xmlns="http://javafx.com/javafx/8.0.171" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.example.DashboardController">
+    <HBox spacing="10" alignment="CENTER">
+        <TextField fx:id="taskTitleField" promptText="Task Title"/>
+        <TextField fx:id="taskDescField" promptText="Description"/>
+        <ComboBox fx:id="statusComboBox" />
+        <Button text="Add Task" onAction="#handleAddTask"/>
+    </HBox>
+    
+    <TableView fx:id="taskTable">
+        <columns>
+            <TableColumn fx:id="idColumn" text="ID"/>
+            <TableColumn fx:id="titleColumn" text="Title"/>
+            <TableColumn fx:id="descriptionColumn" text="Description"/>
+            <TableColumn fx:id="statusColumn" text="Status"/>
+        </columns>
+    </TableView>
+    
+    <Button text="Logout" onAction="#handleLogout"/>
+</VBox>
