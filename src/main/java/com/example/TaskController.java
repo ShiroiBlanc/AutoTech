@@ -5,31 +5,30 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class TaskController {
-
     public static void addTask(String title, String description, String status) throws SQLException {
         String query = "INSERT INTO tasks (title, description, status) VALUES (?, ?, ?)";
-        try (Connection connection = DatabaseUtil.getConnection();
-             PreparedStatement preparedStatement = connection.prepareStatement(query)) {
-            preparedStatement.setString(1, title);
-            preparedStatement.setString(2, description);
-            preparedStatement.setString(3, status);
-            preparedStatement.executeUpdate();
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+            stmt.setString(1, title);
+            stmt.setString(2, description);
+            stmt.setString(3, status);
+            stmt.executeUpdate();
         }
     }
 
     public static List<Task> getTasksByStatus(String status) throws SQLException {
-        String query = "SELECT * FROM tasks WHERE status = ?";
         List<Task> tasks = new ArrayList<>();
-        try (Connection connection = DatabaseUtil.getConnection();
-             PreparedStatement preparedStatement = connection.prepareStatement(query)) {
-            preparedStatement.setString(1, status);
-            ResultSet resultSet = preparedStatement.executeQuery();
-            while (resultSet.next()) {
+        String query = "SELECT * FROM tasks WHERE status = ?";
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+            stmt.setString(1, status);
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
                 tasks.add(new Task(
-                    resultSet.getInt("id"),
-                    resultSet.getString("title"),
-                    resultSet.getString("description"),
-                    resultSet.getString("status")
+                    rs.getInt("id"),
+                    rs.getString("title"),
+                    rs.getString("description"),
+                    rs.getString("status")
                 ));
             }
         }

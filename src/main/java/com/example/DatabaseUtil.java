@@ -1,24 +1,28 @@
 package com.example;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.SQLException;
 
 public class DatabaseUtil {
+    private static HikariDataSource dataSource;
 
-    private static final String URL = "jdbc:mysql://localhost:3306/AutoTech";
-    private static final String USER = "root";
-    private static final String PASSWORD = "root";
+    static {
+        HikariConfig config = new HikariConfig();
+        // Make sure you're connecting to the correct database name (AutoTech, not autotech)
+        config.setJdbcUrl("jdbc:mysql://localhost:3306/AutoTech?allowPublicKeyRetrieval=true&useSSL=false");
+        config.setUsername("root");
+        config.setPassword("root");
+        config.setMaximumPoolSize(10);
+        config.addDataSourceProperty("cachePrepStmts", "true");
+        config.addDataSourceProperty("prepStmtCacheSize", "250");
+        config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
 
-    public static Connection getConnection() throws SQLException {
-        return DriverManager.getConnection(URL, USER, PASSWORD);
+        dataSource = new HikariDataSource(config);
     }
 
-    public static void main(String[] args) {
-        try (Connection connection = getConnection()) {
-            System.out.println("Connection successful!");
-        } catch (SQLException e) {
-            System.err.println("Connection failed: " + e.getMessage());
-        }
+    public static Connection getConnection() throws SQLException {
+        return dataSource.getConnection();
     }
 }
