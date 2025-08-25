@@ -62,19 +62,25 @@ public class DashboardController {
         User.UserRole role = currentUser.getRole();
         System.out.println("Setting up access for role: " + role);
         
+        // First hide all buttons
+        boolean showAllButtons = false;
+        
+        // Then selectively show them based on role
         switch (role) {
             case ADMIN:
                 // Admin has access to everything
+                showAllButtons = true;
                 break;
                 
             case CASHIER:
                 // Cashier can see everything except admin panel
+                showAllButtons = true;
                 adminButton.setDisable(true);
                 adminButton.setVisible(false);
                 break;
                 
             case MECHANIC:
-                // Mechanics can only see service bookings
+                // Mechanics can ONLY see service bookings - hide everything else
                 customersButton.setDisable(true);
                 customersButton.setVisible(false);
                 billingButton.setDisable(true);
@@ -85,7 +91,16 @@ public class DashboardController {
                 inventoryButton.setVisible(false);
                 adminButton.setDisable(true);
                 adminButton.setVisible(false);
+                
+                // Make sure service booking button is enabled and visible
+                serviceBookingButton.setDisable(false);
+                serviceBookingButton.setVisible(true);
                 break;
+        }
+        
+        // If not showing all buttons, make sure we've properly hidden the ones we don't want
+        if (!showAllButtons) {
+            System.out.println("Limited access mode for role: " + role);
         }
     }
 
@@ -136,9 +151,11 @@ public class DashboardController {
     @FXML
     private void showBooking() { 
         try {
+            System.out.println("Loading service booking view");
             loadView("booking"); 
         } catch (Exception e) {
             showError("Error loading booking view: " + e.getMessage());
+            e.printStackTrace();
         }
     }
     

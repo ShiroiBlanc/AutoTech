@@ -6,6 +6,7 @@ public class User {
     private String password;
     private String email;
     private UserRole role;
+    private boolean active; // Added active status field
 
     public enum UserRole {
         ADMIN,
@@ -23,16 +24,18 @@ public class User {
     }
 
     // Make sure this constructor exists and matches what UserService is calling
-    public User(int id, String username, String password, String email, UserRole role) {
+    public User(int id, String username, String password, String email, UserRole role, boolean active) {
         this.id = id;
         this.username = username;
         this.password = password;
         this.email = email;
         this.role = role;
+        this.active = active;
     }
     
-    public User(String username, String password, String email, UserRole role) {
-        this(0, username, password, email, role);
+    // Overloaded constructor with default active status
+    public User(int id, String username, String password, String email, UserRole role) {
+        this(id, username, password, email, role, true);
     }
 
     // Getters
@@ -54,5 +57,15 @@ public class User {
 
     public UserRole getRole() {
         return role;
+    }
+
+    // Add getter for active status
+    public boolean isActive() {
+        return active;
+    }
+
+    // Add the setter for active if it doesn't exist
+    public void setActive(boolean active) {
+        this.active = active;
     }
 }

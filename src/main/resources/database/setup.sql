@@ -15,13 +15,14 @@ INSERT INTO roles (name) VALUES
     ('CASHIER'),
     ('MECHANIC');
 
--- Create users table with role
+-- Create users table with role and active status
 CREATE TABLE users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
     email VARCHAR(100) NOT NULL,
     role_id INT NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,  -- Added active status column
     FOREIGN KEY (role_id) REFERENCES roles(id)
 );
 
@@ -56,4 +57,47 @@ CREATE TABLE tasks (
     FOREIGN KEY (created_by) REFERENCES users(id),
     FOREIGN KEY (assigned_to) REFERENCES mechanics(id)
 );
+
+-- Create a view for user management in the admin panel
+CREATE OR REPLACE VIEW user_management_view AS
+SELECT 
+    u.id,
+    u.username,
+    u.email,
+    r.name AS role_name,
+    u.active
+FROM 
+    users u
+JOIN 
+    roles r ON u.role_id = r.id;
+
+-- Create stored procedure to toggle user active status
+DELIMITER //
+CREATE PROCEDURE toggle_user_status(IN user_id INT, IN new_status BOOLEAN)
+BEGIN
+    UPDATE users SET active = new_status WHERE id = user_id;
+END //
+DELIMITER ;
+
+-- Create stored procedure to delete a user
+DELIMITER //
+CREATE PROCEDURE delete_user(IN user_id INT)
+BEGIN
+    -- Check if user exists
+    DECLARE user_exists INT;
+    SELECT COUNT(*) INTO user_exists FROM users WHERE id = user_id;
+    
+    IF user_exists > 0 THEN
+        -- Delete any foreign key references first
+        DELETE FROM mechanics WHERE user_id = user_id;
+        
+        -- Then delete the user
+        DELETE FROM users WHERE id = user_id;
+    END IF;
+END //
+DELIMITER ;
+
+-- Add indexes for faster searching
+CREATE INDEX idx_username ON users(username);
+CREATE INDEX idx_user_email ON users(email);
 
