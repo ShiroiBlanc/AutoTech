@@ -11,12 +11,12 @@ import javafx.scene.control.Alert.AlertType;
 public class LoginController {
     @FXML private TextField usernameField;
     @FXML private PasswordField passwordField;
-    @FXML private Label errorLabel; // Make sure this matches the fx:id in login.fxml
+    @FXML private Label messageLabel; // Renamed from errorLabel to messageLabel
 
     private void showError(String message) {
-        // Use an Alert as a fallback if errorLabel is null
-        if (errorLabel != null) {
-            errorLabel.setText(message);
+        // Use messageLabel for error messages
+        if (messageLabel != null) {
+            messageLabel.setText(message);
         } else {
             Alert alert = new Alert(AlertType.ERROR, message);
             alert.setHeaderText("Login Error");
@@ -66,11 +66,21 @@ public class LoginController {
     }
 
     @FXML
+    private void handleSignupLink() {
+        try {
+            App.setRoot("signup");
+        } catch (IOException e) {
+            messageLabel.setText("Error loading signup page: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    @FXML
     public void initialize() {
         System.out.println("LoginController initialized");
         System.out.println("usernameField: " + (usernameField != null ? "found" : "null"));
         System.out.println("passwordField: " + (passwordField != null ? "found" : "null"));
-        System.out.println("errorLabel: " + (errorLabel != null ? "found" : "null"));
+        System.out.println("messageLabel: " + (messageLabel != null ? "found" : "null"));
     }
 }
 

@@ -25,6 +25,7 @@ public class DashboardController {
 
     @FXML
     public void initialize() {
+        // Initialize the dashboard
         try {
             System.out.println("Initializing dashboard controller");
             
@@ -122,7 +123,9 @@ public class DashboardController {
     }
 
     private void showError(String message) {
-        Alert alert = new Alert(Alert.AlertType.ERROR, message);
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        alert.setTitle("Error");
+        alert.setContentText(message);
         alert.showAndWait();
     }
 
@@ -137,11 +140,11 @@ public class DashboardController {
             e.printStackTrace();
         }
     }
-
-    // Add all required event handlers that might be in the FXML
+    
     @FXML
     private void showCustomers() { 
         try {
+            // Make sure this matches your FXML filename
             loadView("customers"); 
         } catch (Exception e) {
             showError("Error loading customers view: " + e.getMessage());
@@ -149,10 +152,10 @@ public class DashboardController {
     }
     
     @FXML
-    private void showBooking() { 
+    private void showBooking() {
         try {
             System.out.println("Loading service booking view");
-            loadView("booking"); 
+            loadView("booking");
         } catch (Exception e) {
             showError("Error loading booking view: " + e.getMessage());
             e.printStackTrace();
@@ -160,41 +163,49 @@ public class DashboardController {
     }
     
     @FXML
-    private void showBilling() { 
+    private void showBilling() {
         try {
-            loadView("billing"); 
+            System.out.println("Loading billing view");
+            loadView("billing");
         } catch (Exception e) {
             showError("Error loading billing view: " + e.getMessage());
+            e.printStackTrace();
         }
     }
     
     @FXML
-    private void showMechanics() { 
+    private void showMechanics() {
         try {
-            loadView("mechanics"); 
+            System.out.println("Loading mechanics view");
+            loadView("mechanics");
         } catch (Exception e) {
             showError("Error loading mechanics view: " + e.getMessage());
+            e.printStackTrace();
         }
     }
     
     @FXML
-    private void showInventory() { 
+    private void showInventory() {
         try {
-            loadView("inventory"); 
+            System.out.println("Loading inventory view");
+            loadView("inventory");
         } catch (Exception e) {
             showError("Error loading inventory view: " + e.getMessage());
+            e.printStackTrace();
         }
     }
     
     @FXML
     private void showAdmin() {
         try {
+            System.out.println("Loading admin view");
             loadView("admin");
         } catch (Exception e) {
             showError("Error loading admin view: " + e.getMessage());
+            e.printStackTrace();
         }
     }
-
+    
     public void openDashboardWindow() {
         try {
             dashboardStage = new Stage();
@@ -203,7 +214,7 @@ public class DashboardController {
             URL resourceUrl = getClass().getClassLoader().getResource("fxml/dashboard.fxml");
             
             if (resourceUrl == null) {
-                System.err.println("Cannot find dashboard.fxml in: " + System.getProperty("user.dir"));
+                System.err.println("Cannot find dashboard.fxml");
                 resourceUrl = App.class.getResource("/fxml/dashboard.fxml");
                 System.out.println("Alternative path result: " + (resourceUrl != null ? "Found" : "Not found"));
                 
@@ -212,7 +223,6 @@ public class DashboardController {
                 }
             }
             
-            System.out.println("Found dashboard.fxml at: " + resourceUrl);
             FXMLLoader loader = new FXMLLoader(resourceUrl);
             Parent root = loader.load();
             

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<BorderPane xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" 
+            fx:controller="com.example.CustomersController">
+    <top>
+        <VBox spacing="10" style="-fx-padding: 10;">
+            <HBox spacing="10" alignment="CENTER_LEFT">
+                <Label text="Customers Management" style="-fx-font-size: 24; -fx-font-weight: bold;"/>
+                <Region HBox.hgrow="ALWAYS" />
+                <TextField fx:id="searchField" promptText="Search customers..." prefWidth="200"/>
+                <Button text="Search" onAction="#handleSearchCustomers"/>
+                <Button text="Refresh" onAction="#handleRefreshCustomers"/>
+            </HBox>
+            
+            <HBox>
+                <Label fx:id="totalCustomersLabel" text="Total customers: 0"/>
+                <Region HBox.hgrow="ALWAYS" />
+                <Button text="Add New Customer" onAction="#handleAddCustomer"/>
+            </HBox>
+            
+            <Label fx:id="statusLabel" style="-fx-text-fill: green;"/>
+        </VBox>
+    </top>
+    
+    <center>
+        <TabPane fx:id="customerTabPane">
+            <Tab text="All Customers" closable="false">
+                <content>
+                    <TableView fx:id="customerTable">
+                        <columns>
+                            <TableColumn fx:id="idColumn" text="ID" prefWidth="50"/>
+                            <TableColumn fx:id="nameColumn" text="Name" prefWidth="150"/>
+                            <TableColumn fx:id="phoneColumn" text="Phone" prefWidth="100"/>
+                            <TableColumn fx:id="emailColumn" text="Email" prefWidth="150"/>
+                            <TableColumn fx:id="addressColumn" text="Address" prefWidth="200"/>
+                            <TableColumn fx:id="actionsColumn" text="Actions" prefWidth="150"/>
+                        </columns>
+                    </TableView>
+                </content>
+            </Tab>
+        </TabPane>
+    </center>
+</BorderPane>

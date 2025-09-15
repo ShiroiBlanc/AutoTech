@@ -22,15 +22,15 @@ CREATE TABLE users (
     password VARCHAR(255) NOT NULL,
     email VARCHAR(100) NOT NULL,
     role_id INT NOT NULL,
-    active BOOLEAN NOT NULL DEFAULT TRUE,  -- Added active status column
+    active BOOLEAN NOT NULL DEFAULT TRUE,
     FOREIGN KEY (role_id) REFERENCES roles(id)
 );
 
 -- Insert default users
-INSERT INTO users (username, password, email, role_id) VALUES
-    ('admin', 'admin123', 'admin@autotech.com', (SELECT id FROM roles WHERE name = 'ADMIN')),
-    ('cashier', 'cash123', 'cashier@autotech.com', (SELECT id FROM roles WHERE name = 'CASHIER')),
-    ('mechanic', 'mech123', 'mechanic@autotech.com', (SELECT id FROM roles WHERE name = 'MECHANIC'));
+INSERT INTO users (username, password, email, role_id, active) VALUES
+    ('admin', 'admin123', 'admin@autotech.com', (SELECT id FROM roles WHERE name = 'ADMIN'), TRUE),
+    ('cashier', 'cash123', 'cashier@autotech.com', (SELECT id FROM roles WHERE name = 'CASHIER'), TRUE),
+    ('mechanic', 'mech123', 'mechanic@autotech.com', (SELECT id FROM roles WHERE name = 'MECHANIC'), TRUE);
 
 -- Create mechanics table
 CREATE TABLE mechanics (
@@ -50,54 +50,25 @@ CREATE TABLE tasks (
     title VARCHAR(255) NOT NULL,
     description TEXT,
     status VARCHAR(50) NOT NULL,
-    priority VARCHAR(20) NOT NULL DEFAULT 'MEDIUM',  -- Added priority field
-    due_date DATE,                                  -- Added due date
-    assigned_to INT,                                -- Added mechanic assignment
+    priority VARCHAR(20) NOT NULL DEFAULT 'MEDIUM',
+    due_date DATE,
+    assigned_to INT,
     created_by INT,
     FOREIGN KEY (created_by) REFERENCES users(id),
     FOREIGN KEY (assigned_to) REFERENCES mechanics(id)
 );
 
--- Create a view for user management in the admin panel
-CREATE OR REPLACE VIEW user_management_view AS
-SELECT 
-    u.id,
-    u.username,
-    u.email,
-    r.name AS role_name,
-    u.active
-FROM 
-    users u
-JOIN 
-    roles r ON u.role_id = r.id;
+-- Create customers table
+CREATE TABLE customers (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    phone VARCHAR(20),
+    email VARCHAR(100),
+    address VARCHAR(255)
+);
 
--- Create stored procedure to toggle user active status
-DELIMITER //
-CREATE PROCEDURE toggle_user_status(IN user_id INT, IN new_status BOOLEAN)
-BEGIN
-    UPDATE users SET active = new_status WHERE id = user_id;
-END //
-DELIMITER ;
-
--- Create stored procedure to delete a user
-DELIMITER //
-CREATE PROCEDURE delete_user(IN user_id INT)
-BEGIN
-    -- Check if user exists
-    DECLARE user_exists INT;
-    SELECT COUNT(*) INTO user_exists FROM users WHERE id = user_id;
-    
-    IF user_exists > 0 THEN
-        -- Delete any foreign key references first
-        DELETE FROM mechanics WHERE user_id = user_id;
-        
-        -- Then delete the user
-        DELETE FROM users WHERE id = user_id;
-    END IF;
-END //
-DELIMITER ;
-
--- Add indexes for faster searching
-CREATE INDEX idx_username ON users(username);
-CREATE INDEX idx_user_email ON users(email);
-
+-- Add some sample customers
+INSERT INTO customers (name, phone, email, address) VALUES
+    ('John Smith', '555-1234', 'john@example.com', '123 Main St, Anytown'),
+    ('Jane Doe', '555-5678', 'jane@example.com', '456 Oak Ave, Somewhere'),
+    ('Bob Johnson', '555-9012', 'bob@example.com', '789 Pine Rd, Nowhere');

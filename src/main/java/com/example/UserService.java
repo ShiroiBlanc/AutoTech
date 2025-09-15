@@ -201,7 +201,7 @@ public class UserService {
         
         return users;
     }
-    
+
     // Toggle user active status
     public boolean toggleUserStatus(int userId, boolean newStatus) throws SQLException {
         try (Connection conn = DatabaseUtil.getConnection();
