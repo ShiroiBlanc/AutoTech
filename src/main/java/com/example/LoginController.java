@@ -56,23 +56,8 @@ public class LoginController {
     }
 
     @FXML
-    private void switchToSignup() throws IOException {
-        App.setRoot("signup");
-    }
-
-    @FXML
     private void switchToForgotPassword() throws IOException {
         App.setRoot("forgot-password");
-    }
-
-    @FXML
-    private void handleSignupLink() {
-        try {
-            App.setRoot("signup");
-        } catch (IOException e) {
-            messageLabel.setText("Error loading signup page: " + e.getMessage());
-            e.printStackTrace();
-        }
     }
 
     @FXML
@@ -83,4 +68,3 @@ public class LoginController {
         System.out.println("messageLabel: " + (messageLabel != null ? "found" : "null"));
     }
 }
-

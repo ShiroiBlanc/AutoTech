@@ -7,8 +7,6 @@ import javafx.scene.Scene;
 import javafx.stage.Stage;
 
 import java.io.IOException;
-import com.zaxxer.hikari.HikariDataSource;
-import java.lang.reflect.Field;
 
 
 public class App extends Application {
@@ -35,20 +33,12 @@ public class App extends Application {
 
     @Override
     public void stop() {
-        // Properly close database connections on application shutdown
         try {
-            // Access HikariDataSource to close it properly
-            Field dataSourceField = DatabaseUtil.class.getDeclaredField("dataSource");
-            dataSourceField.setAccessible(true);
-            HikariDataSource dataSource = (HikariDataSource) dataSourceField.get(null);
-
-            if (dataSource != null && !dataSource.isClosed()) {
-                dataSource.close();
-                System.out.println("Database connections closed");
-            }
+            // Clean up database connections
+            DatabaseUtil.closeConnection();
+            System.out.println("Application stopping, resources released.");
         } catch (Exception e) {
-            System.err.println("Error closing database connections: " + e.getMessage());
-            e.printStackTrace();
+            System.err.println("Error during application shutdown: " + e.getMessage());
         }
     }
 

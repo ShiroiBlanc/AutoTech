@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<BorderPane xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" 
+            fx:controller="com.example.MechanicController">
+    <top>
+        <VBox spacing="10" style="-fx-padding: 10;">
+            <HBox spacing="10" alignment="CENTER_LEFT">
+                <Label text="Mechanics Management" style="-fx-font-size: 24; -fx-font-weight: bold;"/>
+                <Region HBox.hgrow="ALWAYS" />
+                <TextField fx:id="searchField" promptText="Search mechanics..." prefWidth="200"/>
+                <ComboBox fx:id="filterStatusComboBox" promptText="Filter by status" prefWidth="150" />
+                <Button text="Search" onAction="#handleSearchMechanics"/>
+                <Button text="Refresh" onAction="#handleRefreshMechanics"/>
+            </HBox>
+            
+            <HBox>
+                <Label fx:id="totalMechanicsLabel" text="Total mechanics: 0"/>
+                <Region HBox.hgrow="ALWAYS" />
+                <Button text="Add New Mechanic" onAction="#handleAddMechanic"/>
+            </HBox>
+            
+            <Label fx:id="statusLabel" style="-fx-text-fill: green;"/>
+        </VBox>
+    </top>
+    
+    <center>
+        <TabPane fx:id="mechanicTabPane">
+            <Tab text="All Mechanics" closable="false">
+                <content>
+                    <TableView fx:id="mechanicTable">
+                        <columns>
+                            <TableColumn fx:id="idColumn" text="ID" prefWidth="50"/>
+                            <TableColumn fx:id="nameColumn" text="Name" prefWidth="150"/>
+                            <TableColumn fx:id="specialtyColumn" text="Specialty" prefWidth="150"/> 
+                            <TableColumn fx:id="availabilityColumn" text="Availability" prefWidth="100"/>
+                            <TableColumn fx:id="currentJobsColumn" text="Current Jobs" prefWidth="100"/>
+                            <TableColumn fx:id="actionsColumn" text="Actions" prefWidth="250"/>
+                        </columns>
+                    </TableView>
+                </content>
+            </Tab>
+        </TabPane>
+    </center>
+</BorderPane>

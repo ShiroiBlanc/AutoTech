@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<BorderPane xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" 
+            fx:controller="com.example.InventoryController">
+    <top>
+        <VBox spacing="10" style="-fx-padding: 10;">
+            <HBox spacing="10" alignment="CENTER_LEFT">
+                <Label text="Inventory Management" style="-fx-font-size: 24; -fx-font-weight: bold;"/>
+                <Region HBox.hgrow="ALWAYS" />
+                <TextField fx:id="searchField" promptText="Search inventory..." prefWidth="200"/>
+                <Button text="Search" onAction="#handleSearch"/>
+                <Button text="Refresh" onAction="#handleRefresh"/>
+            </HBox>
+            
+            <HBox>
+                <Label fx:id="statusLabel" style="-fx-text-fill: green;"/>
+                <Region HBox.hgrow="ALWAYS" />
+                <Button text="Add New Item" onAction="#handleAddItem"/>
+            </HBox>
+        </VBox>
+    </top>
+    
+    <center>
+        <TableView fx:id="inventoryTable">
+            <columns>
+                <TableColumn fx:id="partNumberColumn" text="Part Number" prefWidth="100"/>
+                <TableColumn fx:id="nameColumn" text="Item Name" prefWidth="150"/>
+                <TableColumn fx:id="categoryColumn" text="Category" prefWidth="100"/> 
+                <TableColumn fx:id="quantityColumn" text="Quantity" prefWidth="80"/>
+                <TableColumn fx:id="priceColumn" text="Price" prefWidth="80"/>
+                <TableColumn fx:id="locationColumn" text="Location" prefWidth="80"/>
+                <TableColumn fx:id="actionsColumn" text="Actions" prefWidth="150"/>
+            </columns>
+        </TableView>
+    </center>
+</BorderPane>

@@ -1,48 +1,49 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import javafx.scene.control.*?>
-<?import javafx.scene.layout.*?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
 <?import javafx.geometry.Insets?>
 
-<HBox xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.example.DashboardController">
-    <!-- Left Side - Auto Service System -->
+<HBox xmlns="http://javafx.com/javafx/17" 
+      xmlns:fx="http://javafx.com/fxml/1" 
+      fx:controller="com.example.DashboardController">
+      
     <VBox styleClass="sidebar" prefWidth="200" spacing="10" style="-fx-background-color: #2c3e50; -fx-padding: 10;">
         <Label text="AutoTech System" style="-fx-font-size: 20; -fx-text-fill: white;"/>
         
-        <!-- Navigation buttons with fx:id for role-based control -->
         <Button fx:id="customersButton" text="Customers" onAction="#showCustomers" maxWidth="Infinity" 
                 style="-fx-background-color: transparent; -fx-text-fill: white;"/>
+                
         <Button fx:id="serviceBookingButton" text="Service Bookings" onAction="#showBooking" maxWidth="Infinity" 
                 style="-fx-background-color: transparent; -fx-text-fill: white;"/>
+                
         <Button fx:id="billingButton" text="Billing" onAction="#showBilling" maxWidth="Infinity" 
                 style="-fx-background-color: transparent; -fx-text-fill: white;"/>
+                
         <Button fx:id="mechanicsButton" text="Mechanics" onAction="#showMechanics" maxWidth="Infinity" 
                 style="-fx-background-color: transparent; -fx-text-fill: white;"/>
+                
         <Button fx:id="inventoryButton" text="Inventory" onAction="#showInventory" maxWidth="Infinity" 
                 style="-fx-background-color: transparent; -fx-text-fill: white;"/>
+                
         <Button fx:id="adminButton" text="Admin Panel" onAction="#showAdmin" maxWidth="Infinity" 
                 style="-fx-background-color: transparent; -fx-text-fill: white;"/>
         
         <Region VBox.vgrow="ALWAYS"/>
-        <Button text="Logout" onAction="#handleLogout" maxWidth="Infinity" style="-fx-background-color: #c0392b; -fx-text-fill: white;"/>
+        
+        <Button text="Logout" onAction="#handleLogout" maxWidth="Infinity" 
+                style="-fx-background-color: #c0392b; -fx-text-fill: white;"/>
     </VBox>
-
-    <!-- Center - Main Content Area -->
+    
     <StackPane fx:id="contentArea" HBox.hgrow="ALWAYS" style="-fx-background-color: white;">
         <padding>
             <Insets top="20" right="20" bottom="20" left="20"/>
         </padding>
-        
-        <!-- Service Management UI - MOVED INSIDE the StackPane -->
-        <VBox spacing="10">
-            <HBox spacing="10" alignment="CENTER_LEFT">
-                <ComboBox fx:id="statusComboBox"/>
-                <Button text="Add" onAction="#handleAddTask"/>
-            </HBox>
-            <TableView fx:id="taskTable" VBox.vgrow="ALWAYS">
-                <columns>
-                    <TableColumn fx:id="titleColumn" text="Title"/>
-                    <TableColumn fx:id="statusColumn" text="Status"/>
+    </StackPane>
+</HBox>
                 </columns>
             </TableView>
         </VBox>

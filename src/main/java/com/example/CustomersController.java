@@ -91,8 +91,7 @@ public class CustomersController {
                     return new TableCell<Customer, Void>() {
                         private final Button editButton = new Button("Edit");
                         private final Button deleteButton = new Button("Delete");
-                        private final Button vehicleButton = new Button("Vehicles");
-                        private final HBox buttonBox = new HBox(5, editButton, vehicleButton, deleteButton);
+                        private final HBox buttonBox = new HBox(5, editButton, deleteButton);
                         
                         {
                             buttonBox.setAlignment(Pos.CENTER);
@@ -101,14 +100,6 @@ public class CustomersController {
                                 Customer customer = getTableRow().getItem();
                                 if (customer != null) {
                                     editCustomer(customer);
-                                }
-                            });
-                            
-                            // Modify vehicle button action to show vehicle management dialog
-                            vehicleButton.setOnAction(e -> {
-                                Customer customer = getTableRow().getItem();
-                                if (customer != null) {
-                                    showVehicleManagementDialog(customer);
                                 }
                             });
                             
@@ -261,6 +252,32 @@ public class CustomersController {
                         return null;
                     }
                     
+                    // Check only for duplicate email addresses
+                    if (!email.isEmpty()) {
+                        try {
+                            List<Customer> allCustomers = CustomerService.getInstance().getAllCustomers();
+                            
+                            for (Customer existingCustomer : allCustomers) {
+                                // Skip the current customer when editing (don't compare with self)
+                                if (customer != null && existingCustomer.getId() == customer.getId()) {
+                                    continue;
+                                }
+                                
+                                // Only check for email duplication
+                                if (!email.isEmpty() && email.equalsIgnoreCase(existingCustomer.getEmail())) {
+                                    showAlert(Alert.AlertType.ERROR, "Duplicate Email", 
+                                            "A customer with this email already exists.");
+                                    return null;
+                                }
+                            }
+                        } catch (SQLException ex) {
+                            ex.printStackTrace();
+                            showAlert(Alert.AlertType.ERROR, "Error", 
+                                    "Could not check for duplicate customers: " + ex.getMessage());
+                            return null;
+                        }
+                    }
+                    
                     boolean success;
                     if (customer == null) {
                         // Add new customer
@@ -404,61 +421,71 @@ public class CustomersController {
         }
     }
 
-    // Update the method to handle editing existing vehicles
+    // Fix the vehicle dialog to properly accept input by using Stage instead of Dialog
     private void showAddVehicleDialog(Customer customer, Vehicle existingVehicle) {
-        Dialog<Vehicle> dialog = new Dialog<>();
-        dialog.setTitle(existingVehicle == null ? "Add Vehicle" : "Edit Vehicle");
-        dialog.setHeaderText((existingVehicle == null ? "Add" : "Edit") + " vehicle for " + customer.getName());
-        
-        // Set button types
-        ButtonType saveButtonType = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE);
-        dialog.getDialogPane().getButtonTypes().addAll(saveButtonType, ButtonType.CANCEL);
-        
-        // Create form fields
-        GridPane grid = new GridPane();
-        grid.setHgap(10);
-        grid.setVgap(10);
-        grid.setPadding(new Insets(20, 150, 10, 10));
-        
-        TextField typeField = new TextField();
-        typeField.setPromptText("Vehicle Type");
-        TextField brandField = new TextField();
-        brandField.setPromptText("Brand");
-        TextField modelField = new TextField();
-        modelField.setPromptText("Model");
-        TextField yearField = new TextField();
-        yearField.setPromptText("Year");
-        TextField plateNumberField = new TextField();
-        plateNumberField.setPromptText("Plate Number");
-        
-        grid.add(new Label("Type:"), 0, 0);
-        grid.add(typeField, 1, 0);
-        grid.add(new Label("Brand:"), 0, 1);
-        grid.add(brandField, 1, 1);
-        grid.add(new Label("Model:"), 0, 2);
-        grid.add(modelField, 1, 2);
-        grid.add(new Label("Year:"), 0, 3);
-        grid.add(yearField, 1, 3);
-        grid.add(new Label("Plate Number:"), 0, 4);
-        grid.add(plateNumberField, 1, 4);
-        
-        dialog.getDialogPane().setContent(grid);
-        
-        // Focus on type field by default
-        typeField.requestFocus();
-        
-        // Set existing values if editing
-        if (existingVehicle != null) {
-            typeField.setText(existingVehicle.getType());
-            brandField.setText(existingVehicle.getBrand());
-            modelField.setText(existingVehicle.getModel());
-            yearField.setText(existingVehicle.getYear());
-            plateNumberField.setText(existingVehicle.getPlateNumber());
-        }
-        
-        // Convert the result
-        dialog.setResultConverter(dialogButton -> {
-            if (dialogButton == saveButtonType) {
+        try {
+            // Create a new Stage instead of a Dialog
+            Stage dialogStage = new Stage();
+            dialogStage.setTitle(existingVehicle == null ? "Add Vehicle" : "Edit Vehicle");
+            dialogStage.initModality(Modality.APPLICATION_MODAL); // Block input to other windows
+            
+            // Create form layout
+            GridPane grid = new GridPane();
+            grid.setHgap(10);
+            grid.setVgap(10);
+            grid.setPadding(new Insets(20));
+            
+            // Header
+            Label headerLabel = new Label((existingVehicle == null ? "Add" : "Edit") + " vehicle for " + customer.getName());
+            headerLabel.setStyle("-fx-font-size: 16; -fx-font-weight: bold;");
+            
+            // Create form fields
+            TextField typeField = new TextField();
+            typeField.setPromptText("Vehicle Type");
+            TextField brandField = new TextField();
+            brandField.setPromptText("Brand");
+            TextField modelField = new TextField();
+            modelField.setPromptText("Model");
+            TextField yearField = new TextField();
+            yearField.setPromptText("Year");
+            TextField plateNumberField = new TextField();
+            plateNumberField.setPromptText("Plate Number");
+            
+            // Set existing values if editing
+            if (existingVehicle != null) {
+                typeField.setText(existingVehicle.getType());
+                brandField.setText(existingVehicle.getBrand());
+                modelField.setText(existingVehicle.getModel());
+                yearField.setText(existingVehicle.getYear());
+                plateNumberField.setText(existingVehicle.getPlateNumber());
+            }
+            
+            // Add fields to grid
+            grid.add(headerLabel, 0, 0, 2, 1);
+            grid.add(new Separator(), 0, 1, 2, 1);
+            
+            grid.add(new Label("Type:"), 0, 2);
+            grid.add(typeField, 1, 2);
+            grid.add(new Label("Brand:"), 0, 3);
+            grid.add(brandField, 1, 3);
+            grid.add(new Label("Model:"), 0, 4);
+            grid.add(modelField, 1, 4);
+            grid.add(new Label("Year:"), 0, 5);
+            grid.add(yearField, 1, 5);
+            grid.add(new Label("Plate Number:"), 0, 6);
+            grid.add(plateNumberField, 1, 6);
+            
+            // Add buttons
+            Button saveButton = new Button("Save");
+            Button cancelButton = new Button("Cancel");
+            
+            HBox buttonBox = new HBox(10, saveButton, cancelButton);
+            buttonBox.setAlignment(Pos.CENTER_RIGHT);
+            buttonBox.setPadding(new Insets(10, 0, 0, 0));
+            grid.add(buttonBox, 0, 7, 2, 1);
+            
+            // Set up button actions
+            saveButton.setOnAction(e -> {
                 try {
                     String type = typeField.getText().trim();
                     String brand = brandField.getText().trim();
@@ -466,9 +493,10 @@ public class CustomersController {
                     String year = yearField.getText().trim();
                     String plateNumber = plateNumberField.getText().trim();
                     
+                    // Validation
                     if (type.isEmpty() || brand.isEmpty() || plateNumber.isEmpty()) {
                         showAlert(Alert.AlertType.ERROR, "Error", "Type, brand, and plate number are required");
-                        return null;
+                        return;
                     }
                     
                     boolean success;
@@ -488,24 +516,43 @@ public class CustomersController {
                     
                     if (success) {
                         statusLabel.setText("Vehicle " + (existingVehicle == null ? "added" : "updated") + " successfully");
-                        // Show the vehicle management dialog again after adding/editing
-                        showVehicleManagementDialog(customer);
+                        dialogStage.close();
                     } else {
                         showAlert(Alert.AlertType.ERROR, 
                                  existingVehicle == null ? "Creation Failed" : "Update Failed", 
                                  "Could not save vehicle information. Please try again.");
                     }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    showAlert(Alert.AlertType.ERROR, 
-                             "Error", 
-                             "An error occurred: " + e.getMessage());
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                    showAlert(Alert.AlertType.ERROR, "Error", "An error occurred: " + ex.getMessage());
                 }
-            }
-            return null;
-        });
-        
-        dialog.showAndWait();
+            });
+            
+            cancelButton.setOnAction(e -> {
+                dialogStage.close();
+                showVehicleManagementDialog(customer);
+            });
+            
+            // Set preferred width for text fields
+            typeField.setPrefWidth(250);
+            brandField.setPrefWidth(250);
+            modelField.setPrefWidth(250);
+            yearField.setPrefWidth(250);
+            plateNumberField.setPrefWidth(250);
+            
+            // Create scene and show dialog
+            Scene scene = new Scene(grid, 400, 350);
+            dialogStage.setScene(scene);
+            dialogStage.setResizable(false);
+            dialogStage.showAndWait();
+            
+            // Focus on the first field
+            typeField.requestFocus();
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Error", "Failed to open vehicle form: " + e.getMessage());
+        }
     }
     
     private void loadCustomers() {
