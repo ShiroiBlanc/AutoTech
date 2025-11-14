@@ -36,6 +36,7 @@ INSERT INTO users (username, password, email, role_id) VALUES
 -- Create customers table
 CREATE TABLE IF NOT EXISTS customers (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    hex_id VARCHAR(20) UNIQUE,
     name VARCHAR(100) NOT NULL,
     phone VARCHAR(20),
     email VARCHAR(100),
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS customers (
 -- Create vehicles table
 CREATE TABLE IF NOT EXISTS vehicles (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    hex_id VARCHAR(20) UNIQUE,
     customer_id INT NOT NULL,
     type VARCHAR(50) NOT NULL,
     brand VARCHAR(50) NOT NULL,
@@ -59,14 +61,17 @@ CREATE TABLE IF NOT EXISTS vehicles (
 -- Create mechanics table
 CREATE TABLE mechanics (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    hex_id VARCHAR(20) UNIQUE,
     user_id INT NOT NULL,
-    specialty VARCHAR(100),
+    specialties TEXT,  -- Changed to TEXT to store multiple specialties as comma-separated values
+    availability VARCHAR(20) DEFAULT 'Available' 
+        CHECK (availability IN ('Available', 'Busy', 'Off Duty')),
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
--- Create default mechanic entry
-INSERT INTO mechanics (user_id, specialty) VALUES
-    ((SELECT id FROM users WHERE username = 'mechanic'), 'General Repairs');
+-- Create default mechanic entry with hex_id
+INSERT INTO mechanics (user_id, specialties, hex_id) VALUES
+    ((SELECT id FROM users WHERE username = 'mechanic'), 'General Repairs', 'MECH-00000001');
 
 -- Create tasks table
 CREATE TABLE tasks (
@@ -85,15 +90,16 @@ CREATE TABLE tasks (
 -- Create service_bookings table for scheduling appointments
 CREATE TABLE service_bookings (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    hex_id VARCHAR(20) UNIQUE,
     customer_id INT NOT NULL,
     vehicle_id INT NOT NULL,
+    mechanic_id INT NOT NULL,
     service_type VARCHAR(100) NOT NULL,
     service_description TEXT,
-    mechanic_id INT,
     booking_date DATE NOT NULL,
     booking_time TIME NOT NULL,
     status VARCHAR(20) DEFAULT 'scheduled' 
-        CHECK (status IN ('scheduled', 'in_progress', 'completed', 'cancelled')),
+        CHECK (status IN ('scheduled', 'delayed', 'in_progress', 'completed', 'cancelled')),
     estimated_duration INT,  -- in minutes
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -136,17 +142,33 @@ CREATE TABLE service_items (
 -- Parts inventory table
 CREATE TABLE parts (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    hex_id VARCHAR(20) UNIQUE,
     part_number VARCHAR(50) UNIQUE,
     name VARCHAR(100) NOT NULL,
     description TEXT,
     cost_price DECIMAL(10,2) NOT NULL,
     selling_price DECIMAL(10,2) NOT NULL,
     quantity_in_stock INT DEFAULT 0,
+    reserved_quantity INT DEFAULT 0,
+    expiration_date DATE,
+    unit VARCHAR(20) DEFAULT 'pieces',
     reorder_level INT DEFAULT 5,
     category VARCHAR(50),
     supplier VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Booking parts junction table (which parts will be used in which booking)
+CREATE TABLE IF NOT EXISTS booking_parts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    booking_id INT NOT NULL,
+    part_id INT NOT NULL,
+    quantity INT NOT NULL,
+    price_at_time DECIMAL(10,2) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (booking_id) REFERENCES service_bookings(id) ON DELETE CASCADE,
+    FOREIGN KEY (part_id) REFERENCES parts(id) ON DELETE RESTRICT
 );
 
 -- Service parts junction table (which parts were used in which service)
@@ -163,6 +185,7 @@ CREATE TABLE service_parts (
 -- Invoices table
 CREATE TABLE invoices (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    hex_id VARCHAR(20) UNIQUE,
     service_id INT NOT NULL UNIQUE,
     customer_id INT NOT NULL,
     invoice_number VARCHAR(20) UNIQUE,
@@ -199,6 +222,27 @@ CREATE TABLE invoice_payments (
     FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
+-- Create billing table
+CREATE TABLE billing (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    hex_id VARCHAR(20) UNIQUE,
+    customer_id INT NOT NULL,
+    service_id INT NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    payment_status VARCHAR(20) NOT NULL DEFAULT 'Unpaid'
+        CHECK (payment_status IN ('Paid', 'Unpaid', 'Partial', 'Cancelled')),
+    bill_date DATE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE RESTRICT,
+    FOREIGN KEY (service_id) REFERENCES service_bookings(id) ON DELETE RESTRICT
+);
+
+-- Add indexes for the billing table
+CREATE INDEX idx_billing_customer ON billing(customer_id);
+CREATE INDEX idx_billing_service ON billing(service_id);
+CREATE INDEX idx_billing_status ON billing(payment_status);
+
 -- Create a view for user management in the admin panel
 CREATE OR REPLACE VIEW user_management_view AS
 SELECT 
@@ -223,6 +267,7 @@ CREATE INDEX idx_bookings_vehicle ON service_bookings(vehicle_id);
 CREATE INDEX idx_bookings_mechanic ON service_bookings(mechanic_id);
 CREATE INDEX idx_bookings_date ON service_bookings(booking_date);
 CREATE INDEX idx_bookings_status ON service_bookings(status);
+CREATE INDEX idx_bookings_time ON service_bookings(booking_time);
 
 -- Create indexes for the service tables
 CREATE INDEX idx_services_vehicle_id ON services(vehicle_id);
@@ -239,9 +284,16 @@ CREATE INDEX idx_invoice_payments_invoice_id ON invoice_payments(invoice_id);
 CREATE OR REPLACE VIEW service_booking_details AS
 SELECT 
     sb.id AS booking_id,
+    sb.hex_id AS booking_hex_id,
+    c.id AS customer_id,
+    c.hex_id AS customer_hex_id,
     c.name AS customer_name,
     c.phone AS customer_phone,
+    v.id AS vehicle_id,
+    v.hex_id AS vehicle_hex_id,
     CONCAT(v.brand, ' ', v.model, ' (', v.plate_number, ')') AS vehicle,
+    m.id AS mechanic_id,
+    m.hex_id AS mechanic_hex_id,
     sb.service_type,
     sb.service_description,
     u.username AS mechanic_name,
@@ -265,7 +317,9 @@ CREATE OR REPLACE VIEW service_details AS
 SELECT 
     s.id AS service_id,
     v.id AS vehicle_id,
+    v.hex_id AS vehicle_hex_id,
     c.id AS customer_id,
+    c.hex_id AS customer_hex_id,
     c.name AS customer_name,
     v.brand,
     v.model,
@@ -273,6 +327,7 @@ SELECT
     s.service_date,
     s.status AS service_status,
     s.odometer,
+    m.hex_id AS mechanic_hex_id,
     u.username AS technician_name,
     s.description,
     (SELECT COALESCE(SUM(si.labor_cost), 0) FROM service_items si WHERE si.service_id = s.id) AS labor_cost,
@@ -291,13 +346,13 @@ LEFT JOIN
     users u ON m.user_id = u.id;
 
 -- Sample data for service_bookings
-INSERT INTO service_bookings (customer_id, vehicle_id, service_type, service_description, mechanic_id, booking_date, booking_time, estimated_duration)
+INSERT INTO service_bookings (customer_id, vehicle_id, mechanic_id, service_type, service_description, booking_date, booking_time, estimated_duration)
 SELECT 
     c.id AS customer_id,
     v.id AS vehicle_id,
+    (SELECT id FROM mechanics LIMIT 1) AS mechanic_id,
     'Regular Maintenance' AS service_type,
     'Oil change and multi-point inspection' AS service_description,
-    (SELECT id FROM mechanics LIMIT 1) AS mechanic_id,
     DATE_ADD(CURDATE(), INTERVAL 2 DAY) AS booking_date,
     '10:00:00' AS booking_time,
     60 AS estimated_duration
@@ -305,4 +360,5 @@ FROM
     customers c
 JOIN 
     vehicles v ON c.id = v.customer_id
+WHERE EXISTS (SELECT 1 FROM mechanics)
 LIMIT 1;

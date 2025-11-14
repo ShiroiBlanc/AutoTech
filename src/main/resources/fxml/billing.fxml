@@ -27,7 +27,7 @@
     <center>
         <TableView fx:id="billTable">
             <columns>
-                <TableColumn fx:id="idColumn" text="ID" prefWidth="50"/>
+                <TableColumn fx:id="idColumn" text="Bill ID" prefWidth="120"/>
                 <TableColumn fx:id="customerColumn" text="Customer" prefWidth="150"/>
                 <TableColumn fx:id="vehicleColumn" text="Vehicle" prefWidth="150"/> 
                 <TableColumn fx:id="amountColumn" text="Amount" prefWidth="100"/>

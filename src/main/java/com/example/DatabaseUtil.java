@@ -7,10 +7,7 @@ import java.sql.SQLException;
 public class DatabaseUtil {
     private static final String DB_URL = "jdbc:mysql://localhost:3306/AutoTech";
     private static final String DB_USER = "root";
-    private static final String DB_PASSWORD = "root";
-    
-    // Add this to keep track of connections
-    private static Connection activeConnection = null;
+    private static final String DB_PASSWORD = "1234";
     
     static {
         try {
@@ -23,25 +20,14 @@ public class DatabaseUtil {
     }
     
     public static Connection getConnection() throws SQLException {
-        if (activeConnection == null || activeConnection.isClosed()) {
-            activeConnection = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
-        }
-        return activeConnection;
+        // Always create a new connection instead of reusing
+        // This prevents "connection closed" errors with background threads
+        return DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
     }
     
-    // Add this missing method
+    // Cleanup method (no longer needed since connections are created per request)
     public static void closeConnection() {
-        if (activeConnection != null) {
-            try {
-                if (!activeConnection.isClosed()) {
-                    activeConnection.close();
-                }
-                activeConnection = null;
-                System.out.println("Database connection closed successfully");
-            } catch (SQLException e) {
-                System.err.println("Error closing database connection: " + e.getMessage());
-                e.printStackTrace();
-            }
-        }
+        // Connections are now closed automatically via try-with-resources
+        System.out.println("Database connection cleanup completed");
     }
 }

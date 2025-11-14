@@ -21,6 +21,8 @@
             <HBox>
                 <Label fx:id="totalBookingsLabel" text="Total bookings: 0"/>
                 <Region HBox.hgrow="ALWAYS" />
+                <Button fx:id="deleteSelectedButton" text="Delete Selected" onAction="#handleDeleteSelected" 
+                        style="-fx-background-color: #d32f2f; -fx-text-fill: white;"/>
                 <Button text="Book New Service" onAction="#handleAddBooking"/>
             </HBox>
             
@@ -30,11 +32,12 @@
     
     <center>
         <TabPane fx:id="bookingTabPane">
-            <Tab text="All Bookings" closable="false">
+            <Tab text="Active Bookings" closable="false">
                 <content>
                     <TableView fx:id="bookingTable">
                         <columns>
-                            <TableColumn fx:id="idColumn" text="ID" prefWidth="50"/>
+                            <TableColumn fx:id="selectColumn" text="☑" prefWidth="40"/>
+                            <TableColumn fx:id="idColumn" text="Booking ID" prefWidth="120"/>
                             <TableColumn fx:id="dateColumn" text="Date" prefWidth="100"/>
                             <TableColumn fx:id="timeColumn" text="Time" prefWidth="80"/> 
                             <TableColumn fx:id="customerNameColumn" text="Customer" prefWidth="150"/>

@@ -33,7 +33,7 @@
                 <content>
                     <TableView fx:id="mechanicTable">
                         <columns>
-                            <TableColumn fx:id="idColumn" text="ID" prefWidth="50"/>
+                            <TableColumn fx:id="idColumn" text="Mechanic ID" prefWidth="120"/>
                             <TableColumn fx:id="nameColumn" text="Name" prefWidth="150"/>
                             <TableColumn fx:id="specialtyColumn" text="Specialty" prefWidth="150"/> 
                             <TableColumn fx:id="availabilityColumn" text="Availability" prefWidth="100"/>

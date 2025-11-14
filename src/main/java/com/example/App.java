@@ -15,11 +15,16 @@ public class App extends Application {
 
     @Override
     public void start(Stage stage) throws IOException {
-        // Load initial scene
-        scene = new Scene(loadFXML("login"), 640, 480);
+        // Load landing page as initial scene
+        scene = new Scene(loadFXML("landing"), 900, 650);
         stage.setScene(scene);
         stage.setTitle("AutoTech Service Management");
+        stage.centerOnScreen();
         stage.show();
+        
+        // Start stock monitoring service
+        StockMonitorService.getInstance().startMonitoring();
+        System.out.println("Stock monitoring service started.");
     }
 
     public static void setRoot(String fxml) throws IOException {
@@ -34,6 +39,9 @@ public class App extends Application {
     @Override
     public void stop() {
         try {
+            // Stop stock monitoring
+            StockMonitorService.getInstance().stopMonitoring();
+            
             // Clean up database connections
             DatabaseUtil.closeConnection();
             System.out.println("Application stopping, resources released.");

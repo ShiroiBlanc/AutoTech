@@ -27,12 +27,13 @@ public class CustomerService {
             
             while (rs.next()) {
                 int id = rs.getInt("id");
+                String hexId = rs.getString("hex_id");
                 String name = rs.getString("name");
                 String phone = rs.getString("phone");
                 String email = rs.getString("email");
                 String address = rs.getString("address");
                 
-                customers.add(new Customer(id, name, phone, email, address));
+                customers.add(new Customer(id, hexId, name, phone, email, address));
             }
         }
         
@@ -73,12 +74,14 @@ public class CustomerService {
     public boolean addCustomer(String name, String phone, String email, String address) {
         try (Connection conn = DatabaseUtil.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
-                 "INSERT INTO customers (name, phone, email, address) VALUES (?, ?, ?, ?)")) {
+                 "INSERT INTO customers (hex_id, name, phone, email, address) VALUES (?, ?, ?, ?, ?)")) {
             
-            stmt.setString(1, name);
-            stmt.setString(2, phone);
-            stmt.setString(3, email);
-            stmt.setString(4, address);
+            String hexId = HexIdGenerator.generateCustomerId();
+            stmt.setString(1, hexId);
+            stmt.setString(2, name);
+            stmt.setString(3, phone);
+            stmt.setString(4, email);
+            stmt.setString(5, address);
             
             int rowsAffected = stmt.executeUpdate();
             return rowsAffected > 0;

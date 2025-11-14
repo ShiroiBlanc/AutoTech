@@ -6,7 +6,6 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.Scene;
-import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.layout.GridPane;
@@ -24,7 +23,7 @@ import javafx.scene.control.Separator;
 public class CustomersController {
     @FXML private TextField searchField;
     @FXML private TableView<Customer> customerTable;
-    @FXML private TableColumn<Customer, Integer> idColumn;
+    @FXML private TableColumn<Customer, String> idColumn;
     @FXML private TableColumn<Customer, String> nameColumn;
     @FXML private TableColumn<Customer, String> phoneColumn;
     @FXML private TableColumn<Customer, String> emailColumn;
@@ -41,7 +40,7 @@ public class CustomersController {
         System.out.println("Initializing CustomersController...");
         
         // Configure table columns
-        idColumn.setCellValueFactory(new PropertyValueFactory<>("id"));
+        idColumn.setCellValueFactory(new PropertyValueFactory<>("hexId"));
         nameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
         phoneColumn.setCellValueFactory(new PropertyValueFactory<>("phone"));
         emailColumn.setCellValueFactory(new PropertyValueFactory<>("email"));
@@ -89,12 +88,20 @@ public class CustomersController {
                 @Override
                 public TableCell<Customer, Void> call(final TableColumn<Customer, Void> param) {
                     return new TableCell<Customer, Void>() {
+                        private final Button viewButton = new Button("View");
                         private final Button editButton = new Button("Edit");
                         private final Button deleteButton = new Button("Delete");
-                        private final HBox buttonBox = new HBox(5, editButton, deleteButton);
+                        private final HBox buttonBox = new HBox(5, viewButton, editButton, deleteButton);
                         
                         {
                             buttonBox.setAlignment(Pos.CENTER);
+                            
+                            viewButton.setOnAction(e -> {
+                                Customer customer = getTableRow().getItem();
+                                if (customer != null) {
+                                    openCustomerTab(customer);
+                                }
+                            });
                             
                             editButton.setOnAction(e -> {
                                 Customer customer = getTableRow().getItem();
@@ -195,7 +202,7 @@ public class CustomersController {
     private void showCustomerDialog(Customer customer) {
         Dialog<Customer> dialog = new Dialog<>();
         dialog.setTitle(customer == null ? "Add New Customer" : "Edit Customer");
-        dialog.setHeaderText(customer == null ? "Enter customer details" : "Edit customer details");
+        dialog.setHeaderText(customer == null ? "Enter customer details" : "Edit customer: " + customer.getHexId());
         
         // Set button types
         ButtonType saveButtonType = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE);
@@ -211,6 +218,14 @@ public class CustomersController {
         nameField.setPromptText("Name");
         TextField phoneField = new TextField();
         phoneField.setPromptText("Phone");
+        
+        // Add listener to phone field to only allow numbers, spaces, dashes, and parentheses
+        phoneField.textProperty().addListener((observable, oldValue, newValue) -> {
+            if (!newValue.matches("[0-9\\s\\-\\(\\)\\+]*")) {
+                phoneField.setText(oldValue);
+            }
+        });
+        
         TextField emailField = new TextField();
         emailField.setPromptText("Email");
         TextField addressField = new TextField();
@@ -319,98 +334,6 @@ public class CustomersController {
     }
     
     // Replace showAddVehicleDialog with a more comprehensive vehicle management dialog
-    private void showVehicleManagementDialog(Customer customer) {
-        Dialog<Void> dialog = new Dialog<>();
-        dialog.setTitle("Vehicle Management");
-        dialog.setHeaderText("Vehicles for " + customer.getName());
-        
-        // Set button types
-        ButtonType closeButtonType = new ButtonType("Close", ButtonBar.ButtonData.CANCEL_CLOSE);
-        dialog.getDialogPane().getButtonTypes().add(closeButtonType);
-        
-        // Create the content
-        VBox content = new VBox(10);
-        content.setPadding(new Insets(20));
-        
-        // Create table for vehicles
-        TableView<Vehicle> vehicleTable = new TableView<>();
-        TableColumn<Vehicle, String> typeCol = new TableColumn<>("Type");
-        typeCol.setCellValueFactory(new PropertyValueFactory<>("type"));
-        
-        TableColumn<Vehicle, String> brandCol = new TableColumn<>("Brand");
-        brandCol.setCellValueFactory(new PropertyValueFactory<>("brand"));
-        
-        TableColumn<Vehicle, String> modelCol = new TableColumn<>("Model");
-        modelCol.setCellValueFactory(new PropertyValueFactory<>("model"));
-        
-        TableColumn<Vehicle, String> yearCol = new TableColumn<>("Year");
-        yearCol.setCellValueFactory(new PropertyValueFactory<>("year"));
-        
-        TableColumn<Vehicle, String> plateCol = new TableColumn<>("Plate Number");
-        plateCol.setCellValueFactory(new PropertyValueFactory<>("plateNumber"));
-        
-        TableColumn<Vehicle, Void> actionsCol = new TableColumn<>("Actions");
-        actionsCol.setCellFactory(param -> new TableCell<Vehicle, Void>() {
-            private final Button editButton = new Button("Edit");
-            private final Button deleteButton = new Button("Delete");
-            private final HBox box = new HBox(5, editButton, deleteButton);
-            
-            {
-                box.setAlignment(Pos.CENTER);
-                
-                editButton.setOnAction(e -> {
-                    Vehicle vehicle = getTableRow().getItem();
-                    if (vehicle != null) {
-                        dialog.close();
-                        showAddVehicleDialog(customer, vehicle);
-                    }
-                });
-                
-                deleteButton.setOnAction(e -> {
-                    Vehicle vehicle = getTableRow().getItem();
-                    if (vehicle != null) {
-                        try {
-                            boolean success = VehicleService.getInstance().deleteVehicle(vehicle.getId());
-                            if (success) {
-                                loadVehicles(customer, vehicleTable);
-                                showAlert(Alert.AlertType.INFORMATION, "Success", "Vehicle deleted successfully");
-                            } else {
-                                showAlert(Alert.AlertType.ERROR, "Error", "Failed to delete vehicle");
-                            }
-                        } catch (SQLException ex) {
-                            showAlert(Alert.AlertType.ERROR, "Error", "Failed to delete vehicle: " + ex.getMessage());
-                            ex.printStackTrace();
-                        }
-                    }
-                });
-            }
-            
-            @Override
-            protected void updateItem(Void item, boolean empty) {
-                super.updateItem(item, empty);
-                setGraphic(empty ? null : box);
-            }
-        });
-        
-        vehicleTable.getColumns().addAll(typeCol, brandCol, modelCol, yearCol, plateCol, actionsCol);
-        vehicleTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        
-        // Load vehicles for this customer
-        loadVehicles(customer, vehicleTable);
-        
-        // Add button to add new vehicle
-        Button addButton = new Button("Add New Vehicle");
-        addButton.setOnAction(e -> {
-            dialog.close();
-            showAddVehicleDialog(customer, null);
-        });
-        
-        content.getChildren().addAll(vehicleTable, addButton);
-        dialog.getDialogPane().setContent(content);
-        
-        dialog.showAndWait();
-    }
-
     private void loadVehicles(Customer customer, TableView<Vehicle> table) {
         try {
             List<Vehicle> vehicles = VehicleService.getInstance().getCustomerVehicles(customer.getId());
@@ -426,7 +349,7 @@ public class CustomersController {
         try {
             // Create a new Stage instead of a Dialog
             Stage dialogStage = new Stage();
-            dialogStage.setTitle(existingVehicle == null ? "Add Vehicle" : "Edit Vehicle");
+            dialogStage.setTitle(existingVehicle == null ? "Add Vehicle" : "Edit Vehicle: " + existingVehicle.getHexId());
             dialogStage.initModality(Modality.APPLICATION_MODAL); // Block input to other windows
             
             // Create form layout
@@ -440,20 +363,69 @@ public class CustomersController {
             headerLabel.setStyle("-fx-font-size: 16; -fx-font-weight: bold;");
             
             // Create form fields
-            TextField typeField = new TextField();
-            typeField.setPromptText("Vehicle Type");
+            ComboBox<String> typeComboBox = new ComboBox<>();
+            typeComboBox.setPromptText("Select Vehicle Type");
+            typeComboBox.getItems().addAll(
+                "Sedan",
+                "SUV",
+                "Truck",
+                "Van",
+                "Motorcycle",
+                "Other"
+            );
+            typeComboBox.setMaxWidth(Double.MAX_VALUE);
+            
+            // Create a text field for "Other" type (initially hidden)
+            TextField otherTypeField = new TextField();
+            otherTypeField.setPromptText("Enter vehicle type");
+            otherTypeField.setVisible(false);
+            otherTypeField.setManaged(false); // Don't take up space when hidden
+            
+            // Show/hide the other type field based on selection
+            typeComboBox.valueProperty().addListener((observable, oldValue, newValue) -> {
+                if ("Other".equals(newValue)) {
+                    otherTypeField.setVisible(true);
+                    otherTypeField.setManaged(true);
+                    otherTypeField.requestFocus();
+                } else {
+                    otherTypeField.setVisible(false);
+                    otherTypeField.setManaged(false);
+                    otherTypeField.clear();
+                }
+            });
+            
             TextField brandField = new TextField();
             brandField.setPromptText("Brand");
             TextField modelField = new TextField();
             modelField.setPromptText("Model");
             TextField yearField = new TextField();
             yearField.setPromptText("Year");
+            
+            // Add listener to year field to only allow numbers
+            yearField.textProperty().addListener((observable, oldValue, newValue) -> {
+                if (!newValue.matches("\\d*")) {
+                    yearField.setText(oldValue);
+                }
+            });
+            
             TextField plateNumberField = new TextField();
             plateNumberField.setPromptText("Plate Number");
             
             // Set existing values if editing
             if (existingVehicle != null) {
-                typeField.setText(existingVehicle.getType());
+                String existingType = existingVehicle.getType();
+                // Check if existing type is in the dropdown
+                if (typeComboBox.getItems().contains(existingType) && !"Other".equals(existingType)) {
+                    typeComboBox.setValue(existingType);
+                } else if (!"Other".equals(existingType)) {
+                    // If it's a custom type, select "Other" and show it in the text field
+                    typeComboBox.setValue("Other");
+                    otherTypeField.setText(existingType);
+                    otherTypeField.setVisible(true);
+                    otherTypeField.setManaged(true);
+                } else {
+                    typeComboBox.setValue(existingType);
+                }
                 brandField.setText(existingVehicle.getBrand());
                 modelField.setText(existingVehicle.getModel());
                 yearField.setText(existingVehicle.getYear());
@@ -465,15 +437,16 @@ public class CustomersController {
             grid.add(new Separator(), 0, 1, 2, 1);
             
             grid.add(new Label("Type:"), 0, 2);
-            grid.add(typeField, 1, 2);
-            grid.add(new Label("Brand:"), 0, 3);
-            grid.add(brandField, 1, 3);
-            grid.add(new Label("Model:"), 0, 4);
-            grid.add(modelField, 1, 4);
-            grid.add(new Label("Year:"), 0, 5);
-            grid.add(yearField, 1, 5);
-            grid.add(new Label("Plate Number:"), 0, 6);
-            grid.add(plateNumberField, 1, 6);
+            grid.add(typeComboBox, 1, 2);
+            grid.add(otherTypeField, 1, 3); // Add the "Other" text field below type dropdown
+            grid.add(new Label("Brand:"), 0, 4);
+            grid.add(brandField, 1, 4);
+            grid.add(new Label("Model:"), 0, 5);
+            grid.add(modelField, 1, 5);
+            grid.add(new Label("Year:"), 0, 6);
+            grid.add(yearField, 1, 6);
+            grid.add(new Label("Plate Number:"), 0, 7);
+            grid.add(plateNumberField, 1, 7);
             
             // Add buttons
             Button saveButton = new Button("Save");
@@ -482,12 +455,25 @@ public class CustomersController {
             HBox buttonBox = new HBox(10, saveButton, cancelButton);
             buttonBox.setAlignment(Pos.CENTER_RIGHT);
             buttonBox.setPadding(new Insets(10, 0, 0, 0));
-            grid.add(buttonBox, 0, 7, 2, 1);
+            grid.add(buttonBox, 0, 8, 2, 1);
             
             // Set up button actions
             saveButton.setOnAction(e -> {
                 try {
-                    String type = typeField.getText().trim();
+                    String selectedType = typeComboBox.getValue() != null ? typeComboBox.getValue().trim() : "";
+                    String type;
+                    
+                    // If "Other" is selected, use the custom type from otherTypeField
+                    if ("Other".equals(selectedType)) {
+                        type = otherTypeField.getText().trim();
+                        if (type.isEmpty()) {
+                            showAlert(Alert.AlertType.ERROR, "Error", "Please specify the vehicle type");
+                            return;
+                        }
+                    } else {
+                        type = selectedType;
+                    }
+                    
                     String brand = brandField.getText().trim();
                     String model = modelField.getText().trim();
                     String year = yearField.getText().trim();
@@ -530,29 +516,165 @@ public class CustomersController {
             
             cancelButton.setOnAction(e -> {
                 dialogStage.close();
-                showVehicleManagementDialog(customer);
             });
             
-            // Set preferred width for text fields
-            typeField.setPrefWidth(250);
+            // Set preferred width for fields
+            typeComboBox.setPrefWidth(250);
+            otherTypeField.setPrefWidth(250);
             brandField.setPrefWidth(250);
             modelField.setPrefWidth(250);
             yearField.setPrefWidth(250);
             plateNumberField.setPrefWidth(250);
             
             // Create scene and show dialog
-            Scene scene = new Scene(grid, 400, 350);
+            Scene scene = new Scene(grid, 400, 400);
             dialogStage.setScene(scene);
             dialogStage.setResizable(false);
             dialogStage.showAndWait();
             
             // Focus on the first field
-            typeField.requestFocus();
+            typeComboBox.requestFocus();
             
         } catch (Exception e) {
             e.printStackTrace();
             showAlert(Alert.AlertType.ERROR, "Error", "Failed to open vehicle form: " + e.getMessage());
         }
+    }
+    
+    private void showTransferVehicleDialog(Vehicle vehicle, Customer currentOwner) {
+        Dialog<Customer> dialog = new Dialog<>();
+        dialog.setTitle("Transfer Vehicle");
+        dialog.setHeaderText("Transfer " + vehicle.getBrand() + " " + vehicle.getModel() + 
+                            " (" + vehicle.getHexId() + ") to a different customer");
+        
+        // Set button types
+        ButtonType transferButtonType = new ButtonType("Transfer", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(transferButtonType, ButtonType.CANCEL);
+        
+        // Create the content
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        grid.setPadding(new Insets(20, 150, 10, 10));
+        
+        // Current owner info
+        Label currentOwnerLabel = new Label("Current Owner:");
+        Label currentOwnerValue = new Label(currentOwner.getName() + " (" + currentOwner.getHexId() + ")");
+        currentOwnerValue.setStyle("-fx-font-weight: bold;");
+        
+        // Vehicle details
+        Label vehicleLabel = new Label("Vehicle:");
+        Label vehicleValue = new Label(vehicle.getType() + " - " + vehicle.getBrand() + " " + 
+                                       vehicle.getModel() + " (" + vehicle.getYear() + ")");
+        vehicleValue.setStyle("-fx-font-weight: bold;");
+        
+        Label plateLabel = new Label("Plate Number:");
+        Label plateValue = new Label(vehicle.getPlateNumber());
+        plateValue.setStyle("-fx-font-weight: bold;");
+        
+        // Customer selection
+        Label newOwnerLabel = new Label("Transfer To:");
+        ComboBox<Customer> customerComboBox = new ComboBox<>();
+        
+        // Load all customers except current owner
+        try {
+            List<Customer> allCustomers = CustomerService.getInstance().getAllCustomers();
+            allCustomers.removeIf(c -> c.getId() == currentOwner.getId());
+            customerComboBox.setItems(FXCollections.observableArrayList(allCustomers));
+            customerComboBox.setConverter(new javafx.util.StringConverter<Customer>() {
+                @Override
+                public String toString(Customer customer) {
+                    return customer == null ? "" : customer.getName() + " (" + customer.getHexId() + ")";
+                }
+                
+                @Override
+                public Customer fromString(String string) {
+                    return null;
+                }
+            });
+        } catch (SQLException e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Error", "Failed to load customers: " + e.getMessage());
+            return;
+        }
+        
+        grid.add(currentOwnerLabel, 0, 0);
+        grid.add(currentOwnerValue, 1, 0);
+        grid.add(vehicleLabel, 0, 1);
+        grid.add(vehicleValue, 1, 1);
+        grid.add(plateLabel, 0, 2);
+        grid.add(plateValue, 1, 2);
+        grid.add(new Label(), 0, 3); // Spacer
+        grid.add(newOwnerLabel, 0, 4);
+        grid.add(customerComboBox, 1, 4);
+        
+        dialog.getDialogPane().setContent(grid);
+        
+        // Enable/Disable transfer button depending on whether a customer is selected
+        javafx.scene.Node transferButton = dialog.getDialogPane().lookupButton(transferButtonType);
+        transferButton.setDisable(true);
+        
+        customerComboBox.valueProperty().addListener((observable, oldValue, newValue) -> {
+            transferButton.setDisable(newValue == null);
+        });
+        
+        // Convert the result to a customer when the transfer button is clicked
+        dialog.setResultConverter(dialogButton -> {
+            if (dialogButton == transferButtonType) {
+                return customerComboBox.getValue();
+            }
+            return null;
+        });
+        
+        // Show dialog and process result
+        dialog.showAndWait().ifPresent(newOwner -> {
+            // Confirm transfer
+            Alert confirmAlert = new Alert(Alert.AlertType.CONFIRMATION);
+            confirmAlert.setTitle("Confirm Transfer");
+            confirmAlert.setHeaderText("Confirm Vehicle Transfer");
+            confirmAlert.setContentText(String.format(
+                "Transfer %s %s (%s)\n" +
+                "FROM: %s (%s)\n" +
+                "TO: %s (%s)\n\n" +
+                "Are you sure you want to proceed?",
+                vehicle.getBrand(), vehicle.getModel(), vehicle.getPlateNumber(),
+                currentOwner.getName(), currentOwner.getHexId(),
+                newOwner.getName(), newOwner.getHexId()
+            ));
+            
+            confirmAlert.showAndWait().ifPresent(result -> {
+                if (result == ButtonType.OK) {
+                    try {
+                        boolean success = VehicleService.getInstance().transferVehicle(
+                            vehicle.getId(), 
+                            newOwner.getId()
+                        );
+                        
+                        if (success) {
+                            statusLabel.setText("Vehicle transferred successfully from " + 
+                                              currentOwner.getName() + " to " + newOwner.getName());
+                            showAlert(Alert.AlertType.INFORMATION, 
+                                     "Transfer Complete", 
+                                     "Vehicle has been successfully transferred to " + newOwner.getName());
+                            
+                            // No need to open another dialog - transfer is complete
+                        } else {
+                            showAlert(Alert.AlertType.ERROR, 
+                                     "Transfer Failed", 
+                                     "Could not transfer vehicle. Please try again.");
+                        }
+                    } catch (SQLException ex) {
+                        ex.printStackTrace();
+                        showAlert(Alert.AlertType.ERROR, 
+                                 "Error", 
+                                 "An error occurred during transfer: " + ex.getMessage());
+                    }
+                }
+            });
+        });
+        
+        // Focus on customer combo box
+        customerComboBox.requestFocus();
     }
     
     private void loadCustomers() {
@@ -605,17 +727,20 @@ public class CustomersController {
             detailsGrid.setPadding(new Insets(10, 0, 10, 0));
             
             // Add customer information
-            detailsGrid.add(new Label("Name:"), 0, 0);
-            detailsGrid.add(new Label(customer.getName()), 1, 0);
+            detailsGrid.add(new Label("Customer ID:"), 0, 0);
+            detailsGrid.add(new Label(customer.getHexId()), 1, 0);
             
-            detailsGrid.add(new Label("Phone:"), 0, 1);
-            detailsGrid.add(new Label(customer.getPhone() != null ? customer.getPhone() : ""), 1, 1);
+            detailsGrid.add(new Label("Name:"), 0, 1);
+            detailsGrid.add(new Label(customer.getName()), 1, 1);
             
-            detailsGrid.add(new Label("Email:"), 0, 2);
-            detailsGrid.add(new Label(customer.getEmail() != null ? customer.getEmail() : ""), 1, 2);
+            detailsGrid.add(new Label("Phone:"), 0, 2);
+            detailsGrid.add(new Label(customer.getPhone() != null ? customer.getPhone() : ""), 1, 2);
             
-            detailsGrid.add(new Label("Address:"), 0, 3);
-            detailsGrid.add(new Label(customer.getAddress() != null ? customer.getAddress() : ""), 1, 3);
+            detailsGrid.add(new Label("Email:"), 0, 3);
+            detailsGrid.add(new Label(customer.getEmail() != null ? customer.getEmail() : ""), 1, 3);
+            
+            detailsGrid.add(new Label("Address:"), 0, 4);
+            detailsGrid.add(new Label(customer.getAddress() != null ? customer.getAddress() : ""), 1, 4);
             
             // Vehicle section
             Label vehiclesLabel = new Label("Vehicles");
@@ -624,6 +749,10 @@ public class CustomersController {
             // Create table for vehicles
             TableView<Vehicle> vehicleTable = new TableView<>();
             vehicleTable.setPrefHeight(200);
+            
+            TableColumn<Vehicle, String> vehicleIdCol = new TableColumn<>("Vehicle ID");
+            vehicleIdCol.setCellValueFactory(new PropertyValueFactory<>("hexId"));
+            vehicleIdCol.setPrefWidth(120);
             
             TableColumn<Vehicle, String> typeCol = new TableColumn<>("Type");
             typeCol.setCellValueFactory(new PropertyValueFactory<>("type"));
@@ -644,8 +773,9 @@ public class CustomersController {
             TableColumn<Vehicle, Void> actionsCol = new TableColumn<>("Actions");
             actionsCol.setCellFactory(param -> new TableCell<Vehicle, Void>() {
                 private final Button editButton = new Button("Edit");
+                private final Button transferButton = new Button("Transfer");
                 private final Button deleteButton = new Button("Delete");
-                private final HBox box = new HBox(5, editButton, deleteButton);
+                private final HBox box = new HBox(5, editButton, transferButton, deleteButton);
                 
                 {
                     box.setAlignment(Pos.CENTER);
@@ -659,19 +789,72 @@ public class CustomersController {
                         }
                     });
                     
+                    transferButton.setOnAction(e -> {
+                        Vehicle vehicle = getTableRow().getItem();
+                        if (vehicle != null) {
+                            detailStage.close();
+                            showTransferVehicleDialog(vehicle, customer);
+                        }
+                    });
+                    
                     deleteButton.setOnAction(e -> {
                         Vehicle vehicle = getTableRow().getItem();
                         if (vehicle != null) {
                             try {
-                                boolean success = VehicleService.getInstance().deleteVehicle(vehicle.getId());
-                                if (success) {
-                                    loadVehicles(customer, vehicleTable);
-                                    showAlert(Alert.AlertType.INFORMATION, "Success", "Vehicle deleted successfully");
-                                } else {
-                                    showAlert(Alert.AlertType.ERROR, "Error", "Failed to delete vehicle");
+                                // Check if vehicle has unpaid bills
+                                if (VehicleService.getInstance().hasUnpaidBills(vehicle.getId())) {
+                                    int billCount = VehicleService.getInstance().getUnpaidBillCount(vehicle.getId());
+                                    showAlert(Alert.AlertType.WARNING, 
+                                             "Cannot Delete Vehicle", 
+                                             "This vehicle cannot be deleted because it has " + billCount + 
+                                             " unpaid bill(s) associated with it.\n\n" +
+                                             "Please pay all outstanding bills before deleting this vehicle.");
+                                    return;
                                 }
+                                
+                                // Check if vehicle has active service bookings (not completed or cancelled)
+                                if (VehicleService.getInstance().hasActiveServiceBookings(vehicle.getId())) {
+                                    int bookingCount = VehicleService.getInstance().getActiveServiceBookingCount(vehicle.getId());
+                                    showAlert(Alert.AlertType.WARNING, 
+                                             "Cannot Delete Vehicle", 
+                                             "This vehicle cannot be deleted because it has " + bookingCount + 
+                                             " active service booking(s) associated with it.\n\n" +
+                                             "You can delete this vehicle after:\n" +
+                                             "• Completing or cancelling the active bookings, OR\n" +
+                                             "• Deleting the service bookings\n\n" +
+                                             "Alternatively, consider transferring the vehicle to another customer instead.");
+                                    return;
+                                }
+                                
+                                // Confirm deletion
+                                Alert confirmAlert = new Alert(Alert.AlertType.CONFIRMATION);
+                                confirmAlert.setTitle("Confirm Deletion");
+                                confirmAlert.setHeaderText("Delete Vehicle");
+                                confirmAlert.setContentText("Are you sure you want to delete this vehicle?\n\n" +
+                                                           vehicle.getBrand() + " " + vehicle.getModel() + 
+                                                           " (" + vehicle.getPlateNumber() + ")\n\n" +
+                                                           "Warning: This will also delete:\n" +
+                                                           "• All completed or cancelled service bookings\n" +
+                                                           "• Associated billing records");
+                                
+                                confirmAlert.showAndWait().ifPresent(result -> {
+                                    if (result == ButtonType.OK) {
+                                        try {
+                                            boolean success = VehicleService.getInstance().deleteVehicle(vehicle.getId());
+                                            if (success) {
+                                                loadVehicles(customer, vehicleTable);
+                                                showAlert(Alert.AlertType.INFORMATION, "Success", "Vehicle deleted successfully");
+                                            } else {
+                                                showAlert(Alert.AlertType.ERROR, "Error", "Failed to delete vehicle");
+                                            }
+                                        } catch (SQLException ex) {
+                                            showAlert(Alert.AlertType.ERROR, "Error", "Failed to delete vehicle: " + ex.getMessage());
+                                            ex.printStackTrace();
+                                        }
+                                    }
+                                });
                             } catch (SQLException ex) {
-                                showAlert(Alert.AlertType.ERROR, "Error", "Failed to delete vehicle: " + ex.getMessage());
+                                showAlert(Alert.AlertType.ERROR, "Error", "Failed to check vehicle status: " + ex.getMessage());
                                 ex.printStackTrace();
                             }
                         }
@@ -685,7 +868,7 @@ public class CustomersController {
                 }
             });
             
-            vehicleTable.getColumns().addAll(typeCol, brandCol, modelCol, yearCol, plateCol, actionsCol);
+            vehicleTable.getColumns().addAll(vehicleIdCol, typeCol, brandCol, modelCol, yearCol, plateCol, actionsCol);
             vehicleTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
             
             // Load vehicles for this customer

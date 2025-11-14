@@ -1,98 +1,57 @@
 package com.example;
 
-import java.time.LocalDate;
-
 public class Service {
     private int id;
+    private int customerId;
     private int vehicleId;
+    private int mechanicId;
+    private String date;
+    private String time;
     private String serviceType;
-    private String description;
-    private LocalDate serviceDate;
-    private LocalDate nextServiceDate;
-    private double cost;
+    private String serviceDescription;
     private String status; // "Scheduled", "In Progress", "Completed", "Cancelled"
-    private String technicianName;
+    private double cost;
     
-    public Service(int id, int vehicleId, String serviceType, String description, 
-                  LocalDate serviceDate, LocalDate nextServiceDate, double cost, 
-                  String status, String technicianName) {
+    public Service() {
+        // Default constructor
+    }
+    
+    public Service(int id, int customerId, int vehicleId, int mechanicId, 
+                  String date, String time, String serviceType, String serviceDescription, 
+                  String status, double cost) {
         this.id = id;
+        this.customerId = customerId;
         this.vehicleId = vehicleId;
+        this.mechanicId = mechanicId;
+        this.date = date;
+        this.time = time;
         this.serviceType = serviceType;
-        this.description = description;
-        this.serviceDate = serviceDate;
-        this.nextServiceDate = nextServiceDate;
-        this.cost = cost;
+        this.serviceDescription = serviceDescription;
         this.status = status;
-        this.technicianName = technicianName;
-    }
-    
-    // Getters and setters
-    public int getId() {
-        return id;
-    }
-    
-    public int getVehicleId() {
-        return vehicleId;
-    }
-    
-    public void setVehicleId(int vehicleId) {
-        this.vehicleId = vehicleId;
-    }
-    
-    public String getServiceType() {
-        return serviceType;
-    }
-    
-    public void setServiceType(String serviceType) {
-        this.serviceType = serviceType;
-    }
-    
-    public String getDescription() {
-        return description;
-    }
-    
-    public void setDescription(String description) {
-        this.description = description;
-    }
-    
-    public LocalDate getServiceDate() {
-        return serviceDate;
-    }
-    
-    public void setServiceDate(LocalDate serviceDate) {
-        this.serviceDate = serviceDate;
-    }
-    
-    public LocalDate getNextServiceDate() {
-        return nextServiceDate;
-    }
-    
-    public void setNextServiceDate(LocalDate nextServiceDate) {
-        this.nextServiceDate = nextServiceDate;
-    }
-    
-    public double getCost() {
-        return cost;
-    }
-    
-    public void setCost(double cost) {
         this.cost = cost;
     }
     
-    public String getStatus() {
-        return status;
-    }
+    // Getters
+    public int getId() { return id; }
+    public int getCustomerId() { return customerId; }
+    public int getVehicleId() { return vehicleId; }
+    public int getMechanicId() { return mechanicId; }
+    public String getDate() { return date; }
+    public String getTime() { return time; }
+    public String getServiceType() { return serviceType; }
+    public String getServiceDescription() { return serviceDescription; }
+    public String getStatus() { return status; }
+    public double getCost() { return cost; }
     
-    public void setStatus(String status) {
-        this.status = status;
-    }
-    
-    public String getTechnicianName() {
-        return technicianName;
-    }
-    
-    public void setTechnicianName(String technicianName) {
-        this.technicianName = technicianName;
-    }
+    // Setters
+    public void setId(int id) { this.id = id; }
+    public void setCustomerId(int customerId) { this.customerId = customerId; }
+    public void setVehicleId(int vehicleId) { this.vehicleId = vehicleId; }
+    public void setMechanicId(int mechanicId) { this.mechanicId = mechanicId; }
+    public void setDate(String date) { this.date = date; }
+    public void setTime(String time) { this.time = time; }
+    public void setServiceType(String serviceType) { this.serviceType = serviceType; }
+    public void setServiceDescription(String serviceDescription) { this.serviceDescription = serviceDescription; }
+    public void setStatus(String status) { this.status = status; }
+    public void setCost(double cost) { this.cost = cost; }
 }

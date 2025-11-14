@@ -4,6 +4,7 @@ import java.time.LocalDate;
 
 public class Bill {
     private int id;
+    private String hexId;
     private int customerId;
     private int serviceId;
     private String customerName;
@@ -12,9 +13,10 @@ public class Bill {
     private String paymentStatus;
     private LocalDate billDate;
     
-    public Bill(int id, int customerId, int serviceId, String customerName, String vehicleInfo, 
+    public Bill(int id, String hexId, int customerId, int serviceId, String customerName, String vehicleInfo, 
                double amount, String paymentStatus, LocalDate billDate) {
         this.id = id;
+        this.hexId = hexId;
         this.customerId = customerId;
         this.serviceId = serviceId;
         this.customerName = customerName;
@@ -26,6 +28,8 @@ public class Bill {
     
     // Getters
     public int getId() { return id; }
+    public String getHexId() { return hexId; }
+    public void setHexId(String hexId) { this.hexId = hexId; }
     public int getCustomerId() { return customerId; }
     public int getServiceId() { return serviceId; }
     public String getCustomerName() { return customerName; }

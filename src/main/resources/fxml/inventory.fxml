@@ -27,10 +27,13 @@
     <center>
         <TableView fx:id="inventoryTable">
             <columns>
-                <TableColumn fx:id="partNumberColumn" text="Part Number" prefWidth="100"/>
+                <TableColumn fx:id="partNumberColumn" text="Part ID" prefWidth="120"/>
                 <TableColumn fx:id="nameColumn" text="Item Name" prefWidth="150"/>
                 <TableColumn fx:id="categoryColumn" text="Category" prefWidth="100"/> 
-                <TableColumn fx:id="quantityColumn" text="Quantity" prefWidth="80"/>
+                <TableColumn fx:id="quantityColumn" text="In Stock" prefWidth="70"/>
+                <TableColumn fx:id="reservedColumn" text="Reserved" prefWidth="70"/>
+                <TableColumn fx:id="availableColumn" text="Available" prefWidth="70"/>
+                <TableColumn fx:id="expirationColumn" text="Expiration" prefWidth="100"/>
                 <TableColumn fx:id="priceColumn" text="Price" prefWidth="80"/>
                 <TableColumn fx:id="locationColumn" text="Location" prefWidth="80"/>
                 <TableColumn fx:id="actionsColumn" text="Actions" prefWidth="150"/>

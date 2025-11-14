@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.text.Font?>
+
+<StackPane xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" 
+           fx:controller="com.example.LandingController"
+           style="-fx-background-color: white;">
+    
+    <VBox alignment="CENTER" spacing="40">
+        <padding>
+            <Insets top="100" right="50" bottom="100" left="50"/>
+        </padding>
+        
+        <!-- Welcome Section -->
+        <VBox alignment="CENTER" spacing="20">
+            <Label fx:id="welcomeLabel" text="AutoTech" 
+                   style="-fx-font-size: 48px; -fx-font-weight: bold;">
+                <font>
+                    <Font name="System Bold" size="48"/>
+                </font>
+            </Label>
+            
+            <Label fx:id="taglineLabel" text="Auto Repair Shop Management System" 
+                   style="-fx-font-size: 16px;">
+                <font>
+                    <Font size="16"/>
+                </font>
+            </Label>
+        </VBox>
+        
+        <!-- Get Started Button -->
+        <Button fx:id="getStartedButton" text="Get Started" onAction="#handleGetStarted"
+                style="-fx-font-size: 16px; -fx-padding: 12 40 12 40;">
+            <font>
+                <Font size="16"/>
+            </font>
+        </Button>
+    </VBox>
+</StackPane>

@@ -17,7 +17,7 @@ import java.util.List;
 
 public class BillingController {
     @FXML private TableView<Bill> billTable;
-    @FXML private TableColumn<Bill, Integer> idColumn;
+    @FXML private TableColumn<Bill, String> idColumn;
     @FXML private TableColumn<Bill, String> customerColumn;
     @FXML private TableColumn<Bill, String> vehicleColumn;
     @FXML private TableColumn<Bill, Double> amountColumn;
@@ -33,12 +33,37 @@ public class BillingController {
     @FXML
     public void initialize() {
         // Initialize columns
-        idColumn.setCellValueFactory(new PropertyValueFactory<>("id"));
+        idColumn.setCellValueFactory(new PropertyValueFactory<>("hexId"));
         customerColumn.setCellValueFactory(new PropertyValueFactory<>("customerName"));
         vehicleColumn.setCellValueFactory(new PropertyValueFactory<>("vehicleInfo"));
         amountColumn.setCellValueFactory(new PropertyValueFactory<>("amount"));
         dateColumn.setCellValueFactory(new PropertyValueFactory<>("billDate"));
         statusColumn.setCellValueFactory(new PropertyValueFactory<>("paymentStatus"));
+        
+        // Make ID column clickable to show booking details
+        idColumn.setCellFactory(column -> {
+            return new TableCell<Bill, String>() {
+                @Override
+                protected void updateItem(String item, boolean empty) {
+                    super.updateItem(item, empty);
+                    
+                    if (empty || item == null) {
+                        setText(null);
+                        setStyle("");
+                    } else {
+                        setText(item);
+                        setStyle("-fx-text-fill: #0066cc; -fx-underline: true; -fx-cursor: hand;");
+                        
+                        setOnMouseClicked(event -> {
+                            Bill bill = getTableRow().getItem();
+                            if (bill != null) {
+                                showBookingDetails(bill);
+                            }
+                        });
+                    }
+                }
+            };
+        });
         
         // Format the amount column
         amountColumn.setCellFactory(column -> {
@@ -120,6 +145,116 @@ public class BillingController {
         });
     }
     
+    private void showBookingDetails(Bill bill) {
+        try {
+            // Fetch booking details from service_bookings using the service_id
+            ServiceBookingService bookingService = new ServiceBookingService();
+            ServiceBookingViewModel booking = bookingService.getAllBookings().stream()
+                .filter(b -> b.getId() == bill.getServiceId())
+                .findFirst()
+                .orElse(null);
+            
+            if (booking == null) {
+                showAlert(Alert.AlertType.ERROR, "Error", "Booking details not found for this bill.");
+                return;
+            }
+            
+            // Create dialog
+            Dialog<Void> dialog = new Dialog<>();
+            dialog.setTitle("Booking Details");
+            dialog.setHeaderText("Details for Bill " + bill.getHexId());
+            
+            // Create content
+            GridPane grid = new GridPane();
+            grid.setHgap(10);
+            grid.setVgap(15);
+            grid.setPadding(new Insets(20));
+            grid.setStyle("-fx-background-color: white;");
+            
+            int row = 0;
+            
+            // Bill Information
+            Label billHeaderLabel = new Label("Bill Information:");
+            billHeaderLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-underline: true;");
+            grid.add(billHeaderLabel, 0, row++, 2, 1);
+            
+            grid.add(new Label("Bill ID:"), 0, row);
+            Label billIdLabel = new Label(bill.getHexId());
+            billIdLabel.setStyle("-fx-font-weight: bold;");
+            grid.add(billIdLabel, 1, row++);
+            
+            grid.add(new Label("Amount:"), 0, row);
+            Label amountLabel = new Label(String.format("₱%.2f", bill.getAmount()));
+            amountLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #0066cc; -fx-font-size: 14px;");
+            grid.add(amountLabel, 1, row++);
+            
+            grid.add(new Label("Payment Status:"), 0, row);
+            Label statusLabel = new Label(bill.getPaymentStatus());
+            statusLabel.setStyle("-fx-font-weight: bold;");
+            if ("Paid".equals(bill.getPaymentStatus())) {
+                statusLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: green;");
+            } else if ("Unpaid".equals(bill.getPaymentStatus())) {
+                statusLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: red;");
+            }
+            grid.add(statusLabel, 1, row++);
+            
+            grid.add(new Label("Bill Date:"), 0, row);
+            grid.add(new Label(bill.getBillDate().toString()), 1, row++);
+            
+            // Booking Information
+            row++;
+            Label bookingHeaderLabel = new Label("Booking Information:");
+            bookingHeaderLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-underline: true;");
+            grid.add(bookingHeaderLabel, 0, row++, 2, 1);
+            
+            grid.add(new Label("Booking ID:"), 0, row);
+            grid.add(new Label(String.valueOf(booking.getId())), 1, row++);
+            
+            grid.add(new Label("Customer:"), 0, row);
+            Label customerLabel = new Label(booking.getCustomer().getName());
+            customerLabel.setStyle("-fx-font-weight: bold;");
+            grid.add(customerLabel, 1, row++);
+            
+            grid.add(new Label("Vehicle:"), 0, row);
+            grid.add(new Label(booking.getVehicle().getBrand()), 1, row++);
+            
+            grid.add(new Label("Mechanic:"), 0, row);
+            grid.add(new Label(booking.getMechanic().getName()), 1, row++);
+            
+            grid.add(new Label("Service Type:"), 0, row);
+            Label serviceTypeLabel = new Label(booking.getServiceType());
+            serviceTypeLabel.setStyle("-fx-font-weight: bold;");
+            grid.add(serviceTypeLabel, 1, row++);
+            
+            grid.add(new Label("Service Description:"), 0, row);
+            Label descLabel = new Label(booking.getServiceDescription());
+            descLabel.setWrapText(true);
+            descLabel.setMaxWidth(300);
+            grid.add(descLabel, 1, row++);
+            
+            grid.add(new Label("Booking Date:"), 0, row);
+            grid.add(new Label(booking.getDate().toString()), 1, row++);
+            
+            grid.add(new Label("Booking Time:"), 0, row);
+            grid.add(new Label(booking.getTime()), 1, row++);
+            
+            grid.add(new Label("Status:"), 0, row);
+            Label bookingStatusLabel = new Label(booking.getStatus());
+            bookingStatusLabel.setStyle("-fx-font-weight: bold;");
+            grid.add(bookingStatusLabel, 1, row++);
+            
+            dialog.getDialogPane().setContent(grid);
+            dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+            dialog.getDialogPane().setPrefWidth(500);
+            
+            dialog.showAndWait();
+            
+        } catch (SQLException e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Error", "Could not load booking details: " + e.getMessage());
+        }
+    }
+    
     private void processPayment(Bill bill) {
         try {
             // Show payment confirmation dialog
@@ -127,7 +262,7 @@ public class BillingController {
             confirmDialog.setTitle("Payment Confirmation");
             confirmDialog.setHeaderText("Confirm Payment");
             confirmDialog.setContentText("Process payment of ₱" + String.format("%.2f", bill.getAmount()) + 
-                                         " for bill #" + bill.getId() + "?");
+                                         " for bill " + bill.getHexId() + "?");
             
             confirmDialog.showAndWait().ifPresent(response -> {
                 if (response == ButtonType.OK) {
@@ -136,7 +271,7 @@ public class BillingController {
                         if (success) {
                             bill.setPaymentStatus("Paid");
                             billTable.refresh();
-                            statusLabel.setText("Payment processed for bill #" + bill.getId());
+                            statusLabel.setText("Payment processed for bill " + bill.getHexId());
                             
                             showAlert(Alert.AlertType.INFORMATION, 
                                     "Payment Processed", 
@@ -164,7 +299,7 @@ public class BillingController {
         // Create a dialog to display the receipt
         Dialog<Void> dialog = new Dialog<>();
         dialog.setTitle("Receipt");
-        dialog.setHeaderText("Receipt for Bill #" + bill.getId());
+        dialog.setHeaderText("Receipt for Bill " + bill.getHexId());
         
         // Create the receipt content
         GridPane grid = new GridPane();
@@ -185,7 +320,7 @@ public class BillingController {
         
         // Add receipt details
         grid.add(new Label("Receipt #:"), 0, row);
-        grid.add(new Label(String.valueOf(bill.getId())), 1, row++);
+        grid.add(new Label(bill.getHexId()), 1, row++);
         
         grid.add(new Label("Date:"), 0, row);
         grid.add(new Label(bill.getBillDate().toString()), 1, row++);
@@ -230,7 +365,7 @@ public class BillingController {
         dialog.setResultConverter(dialogButton -> {
             if (dialogButton == printButton) {
                 // In a real application, this would send the receipt to a printer
-                statusLabel.setText("Receipt for bill #" + bill.getId() + " sent to printer");
+                statusLabel.setText("Receipt for bill " + bill.getHexId() + " sent to printer");
             }
             return null;
         });

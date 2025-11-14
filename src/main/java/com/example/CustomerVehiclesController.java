@@ -22,7 +22,7 @@ public class CustomerVehiclesController {
     private TableView<Vehicle> vehicleTable;
     
     @FXML
-    private TableColumn<Vehicle, Integer> idColumn;
+    private TableColumn<Vehicle, String> idColumn;
     
     @FXML
     private TableColumn<Vehicle, String> typeColumn;
@@ -60,7 +60,7 @@ public class CustomerVehiclesController {
     }
     
     private void setupTableColumns() {
-        idColumn.setCellValueFactory(new PropertyValueFactory<>("id"));
+        idColumn.setCellValueFactory(new PropertyValueFactory<>("hexId"));
         typeColumn.setCellValueFactory(new PropertyValueFactory<>("type"));
         brandColumn.setCellValueFactory(new PropertyValueFactory<>("brand"));
         modelColumn.setCellValueFactory(new PropertyValueFactory<>("model"));

@@ -38,6 +38,7 @@ public class BillingService {
             
             while (rs.next()) {
                 int id = rs.getInt("id");
+                String hexId = rs.getString("hex_id");
                 int customerId = rs.getInt("customer_id");
                 int serviceId = rs.getInt("service_id");
                 String customerName = rs.getString("customer_name");
@@ -46,7 +47,7 @@ public class BillingService {
                 String paymentStatus = rs.getString("payment_status");
                 LocalDate billDate = rs.getDate("bill_date").toLocalDate();
                 
-                bills.add(new Bill(id, customerId, serviceId, customerName, vehicleInfo, 
+                bills.add(new Bill(id, hexId, customerId, serviceId, customerName, vehicleInfo, 
                                   amount, paymentStatus, billDate));
             }
         }
@@ -69,7 +70,7 @@ public class BillingService {
             checkStmt = conn.prepareStatement(
                 "SELECT sb.id, sb.customer_id, sb.service_type, sb.status " +
                 "FROM service_bookings sb " +
-                "WHERE sb.id = ? AND sb.status = 'Completed'");
+                "WHERE sb.id = ? AND sb.status = 'completed'");
                 
             checkStmt.setInt(1, serviceBookingId);
             rs = checkStmt.executeQuery();
@@ -97,12 +98,13 @@ public class BillingService {
             
             // Create the bill
             insertStmt = conn.prepareStatement(
-                "INSERT INTO billing (customer_id, service_id, amount, payment_status, bill_date) " +
-                "VALUES (?, ?, ?, 'Unpaid', CURRENT_DATE)");
+                "INSERT INTO billing (customer_id, service_id, amount, payment_status, bill_date, hex_id) " +
+                "VALUES (?, ?, ?, 'Unpaid', CURRENT_DATE, ?)");
                 
             insertStmt.setInt(1, customerId);
             insertStmt.setInt(2, serviceBookingId);
             insertStmt.setDouble(3, amount);
+            insertStmt.setString(4, HexIdGenerator.generateBillId());
             
             int rowsAffected = insertStmt.executeUpdate();
             return rowsAffected > 0;

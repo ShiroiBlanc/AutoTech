@@ -22,12 +22,14 @@ public class DashboardController {
     @FXML private StackPane contentArea;
     private Stage dashboardStage;
 
+    @FXML private Button homeButton;
     @FXML private Button customersButton;
     @FXML private Button serviceBookingButton;
     @FXML private Button billingButton;
     @FXML private Button mechanicsButton;
     @FXML private Button inventoryButton;
     @FXML private Button adminButton;
+    @FXML private Button myProfileButton;
 
     @FXML
     public void initialize() {
@@ -87,22 +89,42 @@ public class DashboardController {
                 break;
                 
             case MECHANIC:
-                // Mechanics can ONLY see service bookings - hide everything else
+                // Mechanics can ONLY see service bookings and their profile - hide everything else
                 customersButton.setDisable(true);
                 customersButton.setVisible(false);
+                customersButton.setManaged(false);
+                
                 billingButton.setDisable(true);
                 billingButton.setVisible(false);
+                billingButton.setManaged(false);
+                
                 mechanicsButton.setDisable(true);
                 mechanicsButton.setVisible(false);
+                mechanicsButton.setManaged(false);
+                
                 inventoryButton.setDisable(true);
                 inventoryButton.setVisible(false);
+                inventoryButton.setManaged(false);
+                
                 adminButton.setDisable(true);
                 adminButton.setVisible(false);
+                adminButton.setManaged(false);
                 
                 // Make sure service booking button is enabled and visible
                 serviceBookingButton.setDisable(false);
                 serviceBookingButton.setVisible(true);
+                
+                // Show My Profile button for mechanics
+                myProfileButton.setDisable(false);
+                myProfileButton.setVisible(true);
                 break;
+        }
+        
+        // Hide My Profile button for non-mechanic users
+        if (role != User.UserRole.MECHANIC) {
+            myProfileButton.setDisable(true);
+            myProfileButton.setVisible(false);
+            myProfileButton.setManaged(false);
         }
         
         // If not showing all buttons, make sure we've properly hidden the ones we don't want
@@ -112,20 +134,8 @@ public class DashboardController {
     }
 
     private void showDefaultView() {
-        User currentUser = UserService.getInstance().getCurrentUser();
-        if (currentUser == null) return;
-        
-        switch (currentUser.getRole()) {
-            case ADMIN:
-                showCustomers(); // Default view for admin
-                break;
-            case CASHIER:
-                showBilling();   // Default view for cashier
-                break;
-            case MECHANIC:
-                showBooking();   // Default view for mechanic
-                break;
-        }
+        // All users start at the home page
+        showHome();
     }
 
     private void showError(String message) {
@@ -143,6 +153,17 @@ public class DashboardController {
             App.setRoot("login");
         } catch (IOException e) {
             showError("Error during logout: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+    
+    @FXML
+    private void showHome() {
+        try {
+            System.out.println("Loading home view");
+            loadView("home");
+        } catch (Exception e) {
+            showError("Error loading home view: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -208,6 +229,17 @@ public class DashboardController {
             loadView("admin");
         } catch (Exception e) {
             showError("Error loading admin view: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+    
+    @FXML
+    private void showMyProfile() {
+        try {
+            System.out.println("Loading my profile view");
+            loadView("mechanic-profile");
+        } catch (Exception e) {
+            showError("Error loading profile view: " + e.getMessage());
             e.printStackTrace();
         }
     }

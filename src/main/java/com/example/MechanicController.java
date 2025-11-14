@@ -15,7 +15,7 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 
 import java.sql.SQLException;
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -24,7 +24,7 @@ public class MechanicController {
     @FXML private TextField searchField;
     @FXML private ComboBox<String> filterStatusComboBox;
     @FXML private TableView<MechanicViewModel> mechanicTable;
-    @FXML private TableColumn<MechanicViewModel, Integer> idColumn;
+    @FXML private TableColumn<MechanicViewModel, String> idColumn;
     @FXML private TableColumn<MechanicViewModel, String> nameColumn;
     @FXML private TableColumn<MechanicViewModel, String> specialtyColumn;
     @FXML private TableColumn<MechanicViewModel, String> availabilityColumn;
@@ -40,13 +40,15 @@ public class MechanicController {
     // ViewModel for mechanics with additional properties
     public static class MechanicViewModel {
         private int id;
+        private String hexId;
         private String name;
         private String specialty;
         private String availability;
         private int currentJobs;
         
-        public MechanicViewModel(int id, String name, String specialty, String availability, int currentJobs) {
+        public MechanicViewModel(int id, String hexId, String name, String specialty, String availability, int currentJobs) {
             this.id = id;
+            this.hexId = hexId;
             this.name = name;
             this.specialty = specialty;
             this.availability = availability;
@@ -54,6 +56,7 @@ public class MechanicController {
         }
         
         public int getId() { return id; }
+        public String getHexId() { return hexId; }
         public String getName() { return name; }
         public String getSpecialty() { return specialty; }
         public String getAvailability() { return availability; }
@@ -68,15 +71,40 @@ public class MechanicController {
         System.out.println("Initializing MechanicController...");
         
         // Setup filter combo box
-        filterStatusComboBox.getItems().addAll("All", "Available", "Busy", "Off Duty");
+        filterStatusComboBox.getItems().addAll("All", "Available", "Busy", "Overloaded", "Off Duty");
         filterStatusComboBox.setValue("All");
         
         // Configure table columns
-        idColumn.setCellValueFactory(new PropertyValueFactory<>("id"));
+        idColumn.setCellValueFactory(new PropertyValueFactory<>("hexId"));
         nameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
         specialtyColumn.setCellValueFactory(new PropertyValueFactory<>("specialty"));
         availabilityColumn.setCellValueFactory(new PropertyValueFactory<>("availability"));
         currentJobsColumn.setCellValueFactory(new PropertyValueFactory<>("currentJobs"));
+        
+        // Make ID column clickable to show full details
+        idColumn.setCellFactory(column -> {
+            return new TableCell<MechanicViewModel, String>() {
+                @Override
+                protected void updateItem(String item, boolean empty) {
+                    super.updateItem(item, empty);
+                    
+                    if (empty || item == null) {
+                        setText(null);
+                        setStyle("");
+                    } else {
+                        setText(item);
+                        setStyle("-fx-text-fill: #0066cc; -fx-underline: true; -fx-cursor: hand;");
+                        
+                        setOnMouseClicked(event -> {
+                            MechanicViewModel mechanic = getTableRow().getItem();
+                            if (mechanic != null) {
+                                showMechanicDetails(mechanic);
+                            }
+                        });
+                    }
+                }
+            };
+        });
         
         // Style the availability column with colors
         availabilityColumn.setCellFactory(column -> {
@@ -97,8 +125,11 @@ public class MechanicController {
                             case "Busy":
                                 setStyle("-fx-text-fill: orange; -fx-font-weight: bold;");
                                 break;
+                            case "Overloaded":
+                                setStyle("-fx-text-fill: #ff4444; -fx-font-weight: bold;");
+                                break;
                             case "Off Duty":
-                                setStyle("-fx-text-fill: red;");
+                                setStyle("-fx-text-fill: #888888;");
                                 break;
                             default:
                                 setStyle("");
@@ -213,18 +244,22 @@ public class MechanicController {
     private void updateMechanicViewList(List<Mechanic> mechanics) throws SQLException {
         mechanicList.clear();
         
-        // Get current jobs count for each mechanic
-        Map<Integer, Integer> jobCounts = mechanicService.getCurrentJobCounts();
+        // Get current job counts for all mechanics
+        Map<Integer, Integer> jobCounts = mechanicService.getAllMechanicsJobCounts();
         
-        // Create view models with additional data
+        // Create view models with real-time data
         for (Mechanic mechanic : mechanics) {
-            String availability = mechanicService.getMechanicAvailability(mechanic.getId());
+            // Calculate availability based on current jobs
+            String availability = mechanicService.calculateAvailability(mechanic.getId());
+            
+            // Get current job count
             int jobCount = jobCounts.getOrDefault(mechanic.getId(), 0);
             
             mechanicList.add(new MechanicViewModel(
                 mechanic.getId(),
+                mechanic.getHexId(),
                 mechanic.getName(),
-                mechanic.getSpecialty(),
+                mechanic.getSpecialtiesAsString(),
                 availability,
                 jobCount
             ));
@@ -235,6 +270,112 @@ public class MechanicController {
     
     private void updateTotalMechanicsLabel() {
         totalMechanicsLabel.setText("Total mechanics: " + mechanicList.size());
+    }
+    
+    private void showMechanicDetails(MechanicViewModel mechanicViewModel) {
+        try {
+            // Fetch full mechanic details
+            Mechanic mechanic = mechanicService.getAllMechanics().stream()
+                .filter(m -> m.getId() == mechanicViewModel.getId())
+                .findFirst()
+                .orElse(null);
+            
+            if (mechanic == null) {
+                showAlert(Alert.AlertType.ERROR, "Error", "Mechanic not found.");
+                return;
+            }
+            
+            // Create dialog
+            Dialog<Void> dialog = new Dialog<>();
+            dialog.setTitle("Mechanic Details");
+            dialog.setHeaderText("Full Details for Mechanic " + mechanic.getHexId());
+            
+            // Create content
+            VBox content = new VBox(15);
+            content.setPadding(new Insets(20));
+            content.setStyle("-fx-background-color: white;");
+            
+            // ID
+            Label idLabel = new Label("ID: " + mechanic.getHexId());
+            idLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold;");
+            
+            // Name
+            Label nameLabel = new Label("Name: " + mechanic.getName());
+            nameLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold;");
+            
+            // Get real-time availability
+            String currentAvailability = mechanicService.calculateAvailability(mechanic.getId());
+            
+            // Availability
+            Label availabilityLabel = new Label("Availability: " + currentAvailability);
+            availabilityLabel.setStyle("-fx-font-size: 14px;");
+            switch (currentAvailability) {
+                case "Available":
+                    availabilityLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: green; -fx-font-weight: bold;");
+                    break;
+                case "Busy":
+                    availabilityLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: orange; -fx-font-weight: bold;");
+                    break;
+                case "Overloaded":
+                    availabilityLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #ff4444; -fx-font-weight: bold;");
+                    break;
+                case "Off Duty":
+                    availabilityLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #888888; -fx-font-weight: bold;");
+                    break;
+            }
+            
+            // Current job count
+            int currentJobCount = mechanicService.getCurrentJobCount(mechanic.getId());
+            Label jobCountLabel = new Label("Current Active Jobs: " + currentJobCount);
+            jobCountLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold;");
+            if (currentJobCount > 0) {
+                jobCountLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #0066cc;");
+            }
+            
+            // Specialties section
+            Label specialtiesHeaderLabel = new Label("Specialties:");
+            specialtiesHeaderLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-underline: true;");
+            
+            VBox specialtiesList = new VBox(5);
+            List<String> specialties = mechanic.getSpecialties();
+            if (specialties.isEmpty()) {
+                Label noSpecialties = new Label("• No specialties listed");
+                noSpecialties.setStyle("-fx-font-size: 13px; -fx-text-fill: gray; -fx-font-style: italic;");
+                specialtiesList.getChildren().add(noSpecialties);
+            } else {
+                for (String specialty : specialties) {
+                    Label specialtyLabel = new Label("• " + specialty);
+                    specialtyLabel.setStyle("-fx-font-size: 13px;");
+                    specialtyLabel.setWrapText(true);
+                    specialtiesList.getChildren().add(specialtyLabel);
+                }
+            }
+            
+            ScrollPane specialtiesScrollPane = new ScrollPane(specialtiesList);
+            specialtiesScrollPane.setFitToWidth(true);
+            specialtiesScrollPane.setPrefHeight(150);
+            specialtiesScrollPane.setStyle("-fx-background-color: white; -fx-border-color: #cccccc; -fx-border-width: 1;");
+            
+            content.getChildren().addAll(
+                idLabel,
+                nameLabel,
+                availabilityLabel,
+                jobCountLabel,
+                new Separator(),
+                specialtiesHeaderLabel,
+                specialtiesScrollPane
+            );
+            
+            dialog.getDialogPane().setContent(content);
+            dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+            dialog.getDialogPane().setPrefWidth(450);
+            
+            dialog.showAndWait();
+            
+        } catch (SQLException e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Error", "Could not load mechanic details: " + e.getMessage());
+        }
     }
     
     private void showMechanicDialog(MechanicViewModel mechanic) {
@@ -255,13 +396,57 @@ public class MechanicController {
         // Change User to MechanicService.User for the ComboBox
         ComboBox<MechanicService.User> userComboBox = new ComboBox<>();
         
-        // Only add name field - specialty is managed in admin panel
         TextField nameField = new TextField();
         nameField.setPromptText("Name");
         
+        // Multiple specialties selection with checkboxes
+        VBox specialtiesBox = new VBox(5);
+        Label specialtiesLabel = new Label("Specialties (select all that apply):");
+        specialtiesLabel.setStyle("-fx-font-weight: bold;");
+        
+        List<CheckBox> specialtyCheckBoxes = new ArrayList<>();
+        String[] availableSpecialties = {
+            "General Maintenance",
+            "Engine Specialist",
+            "Transmission Specialist",
+            "Electrical Systems",
+            "Brake Specialist",
+            "Air Conditioning",
+            "Diagnostics Expert",
+            "Body Work",
+            "Tire Specialist"
+        };
+        
+        for (String specialty : availableSpecialties) {
+            CheckBox cb = new CheckBox(specialty);
+            specialtyCheckBoxes.add(cb);
+            specialtiesBox.getChildren().add(cb);
+        }
+        
+        // Add "Other" checkbox with text field
+        CheckBox otherCheckBox = new CheckBox("Other");
+        TextField otherSpecialtyField = new TextField();
+        otherSpecialtyField.setPromptText("Enter custom specialty");
+        otherSpecialtyField.setDisable(true);
+        otherSpecialtyField.setManaged(false);
+        otherSpecialtyField.setVisible(false);
+        
+        otherCheckBox.selectedProperty().addListener((obs, oldVal, newVal) -> {
+            otherSpecialtyField.setDisable(!newVal);
+            otherSpecialtyField.setManaged(newVal);
+            otherSpecialtyField.setVisible(newVal);
+        });
+        
+        specialtyCheckBoxes.add(otherCheckBox);
+        specialtiesBox.getChildren().addAll(otherCheckBox, otherSpecialtyField);
+        
+        ScrollPane specialtiesScrollPane = new ScrollPane(specialtiesBox);
+        specialtiesScrollPane.setFitToWidth(true);
+        specialtiesScrollPane.setPrefHeight(200);
+        specialtiesScrollPane.setStyle("-fx-background-color: white;");
+        
         // Load users with MECHANIC role for association
         try {
-            // Change User to MechanicService.User for the list
             List<MechanicService.User> mechanicUsers = mechanicService.getUsersWithMechanicRole();
             userComboBox.setItems(FXCollections.observableArrayList(mechanicUsers));
         } catch (SQLException e) {
@@ -272,13 +457,47 @@ public class MechanicController {
         // Set existing values if editing
         if (mechanic != null) {
             nameField.setText(mechanic.getName());
-            // We don't display or edit specialty in this dialog
+            // Pre-select existing specialties
+            try {
+                Mechanic fullMechanic = mechanicService.getAllMechanics().stream()
+                    .filter(m -> m.getId() == mechanic.getId())
+                    .findFirst()
+                    .orElse(null);
+                
+                if (fullMechanic != null) {
+                    List<String> existingSpecialties = fullMechanic.getSpecialties();
+                    for (CheckBox cb : specialtyCheckBoxes) {
+                        if (existingSpecialties.contains(cb.getText())) {
+                            cb.setSelected(true);
+                        }
+                    }
+                    // Check if there are custom specialties
+                    for (String specialty : existingSpecialties) {
+                        boolean isStandard = false;
+                        for (String std : availableSpecialties) {
+                            if (std.equals(specialty)) {
+                                isStandard = true;
+                                break;
+                            }
+                        }
+                        if (!isStandard) {
+                            otherCheckBox.setSelected(true);
+                            otherSpecialtyField.setText(specialty);
+                            break;
+                        }
+                    }
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
         }
         
         grid.add(new Label("User:"), 0, 0);
         grid.add(userComboBox, 1, 0);
         grid.add(new Label("Name:"), 0, 1);
         grid.add(nameField, 1, 1);
+        grid.add(specialtiesLabel, 0, 2);
+        grid.add(specialtiesScrollPane, 1, 2);
         
         // Remove specialty field as it's managed in admin panel
         
@@ -300,14 +519,38 @@ public class MechanicController {
                     return null;
                 }
                 
+                // Collect selected specialties
+                List<String> selectedSpecialties = new ArrayList<>();
+                for (CheckBox cb : specialtyCheckBoxes) {
+                    if (cb.isSelected()) {
+                        if (cb == otherCheckBox) {
+                            String customSpecialty = otherSpecialtyField.getText().trim();
+                            if (!customSpecialty.isEmpty()) {
+                                selectedSpecialties.add(customSpecialty);
+                            }
+                        } else {
+                            selectedSpecialties.add(cb.getText());
+                        }
+                    }
+                }
+                
+                if (selectedSpecialties.isEmpty()) {
+                    showAlert(Alert.AlertType.ERROR, "Error", "Please select at least one specialty");
+                    return null;
+                }
+                
+                // Convert list to comma-separated string
+                String specialtiesStr = String.join(", ", selectedSpecialties);
+                
                 try {
                     boolean success;
+                    
                     if (mechanic == null) {
-                        // Add new mechanic - pass empty string for specialty as it will be set in admin panel
-                        success = mechanicService.addMechanic(selectedUser.getId(), name, "");
+                        // Add new mechanic with selected specialties
+                        success = mechanicService.addMechanic(selectedUser.getId(), name, specialtiesStr);
                     } else {
-                        // Update existing mechanic - keep existing specialty
-                        success = mechanicService.updateMechanic(mechanic.getId(), selectedUser.getId(), name, mechanic.getSpecialty());
+                        // Update existing mechanic with new specialties
+                        success = mechanicService.updateMechanic(mechanic.getId(), selectedUser.getId(), name, specialtiesStr);
                     }
                     
                     if (success) {
@@ -406,11 +649,24 @@ public class MechanicController {
         grid.setPadding(new Insets(20, 150, 10, 10));
         
         ComboBox<String> statusComboBox = new ComboBox<>();
-        statusComboBox.getItems().addAll("Available", "Busy", "Off Duty");
-        statusComboBox.setValue(mechanic.getAvailability());
+        statusComboBox.getItems().addAll("Available (Auto)", "Off Duty");
+        
+        // Show current status
+        String currentStatus = mechanic.getAvailability();
+        if ("Available".equals(currentStatus) || "Busy".equals(currentStatus) || "Overloaded".equals(currentStatus)) {
+            statusComboBox.setValue("Available (Auto)");
+        } else {
+            statusComboBox.setValue(currentStatus);
+        }
+        
+        Label noteLabel = new Label("Note: 'Busy' and 'Overloaded' statuses are automatically\ncalculated based on active job count.");
+        noteLabel.setStyle("-fx-font-size: 10px; -fx-text-fill: #666;");
+        noteLabel.setWrapText(true);
+        noteLabel.setMaxWidth(300);
         
         grid.add(new Label("Status:"), 0, 0);
         grid.add(statusComboBox, 1, 0);
+        grid.add(noteLabel, 0, 1, 2, 1);
         
         dialog.getDialogPane().setContent(grid);
         
@@ -421,15 +677,51 @@ public class MechanicController {
             return null;
         });
         
-        dialog.showAndWait().ifPresent(newStatus -> {
+        dialog.showAndWait().ifPresent(selectedStatus -> {
             try {
-                boolean success = mechanicService.updateMechanicStatus(mechanic.getId(), newStatus);
-                if (success) {
-                    mechanic.setAvailability(newStatus);
-                    mechanicTable.refresh();
-                    statusLabel.setText("Status updated successfully");
+                // Map "Available (Auto)" back to system-calculated status
+                String newStatus;
+                if ("Available (Auto)".equals(selectedStatus)) {
+                    // Let the system calculate the actual status
+                    newStatus = mechanicService.calculateAvailability(mechanic.getId());
+                    // But update database to not be "Off Duty"
+                    mechanicService.updateMechanicStatus(mechanic.getId(), "Available");
                 } else {
-                    showAlert(Alert.AlertType.ERROR, "Error", "Failed to update status");
+                    newStatus = selectedStatus;
+                    mechanicService.updateMechanicStatus(mechanic.getId(), newStatus);
+                }
+                
+                mechanic.setAvailability(newStatus);
+                mechanicTable.refresh();
+                statusLabel.setText("Status updated successfully");
+                
+                // Check bookings when mechanic status changes
+                try {
+                    ServiceBookingService bookingService = new ServiceBookingService();
+                    
+                    if (!"Off Duty".equalsIgnoreCase(newStatus)) {
+                        // Mechanic became available - check if delayed bookings can proceed
+                        int updatedBookings = bookingService.checkAndUpdateDelayedBookingsForMechanic(mechanic.getId());
+                        if (updatedBookings > 0) {
+                            statusLabel.setText("Status updated. " + updatedBookings + 
+                                              " delayed booking(s) updated to scheduled.");
+                            showAlert(Alert.AlertType.INFORMATION, "Bookings Updated",
+                                     updatedBookings + " delayed booking(s) have been automatically updated to scheduled " +
+                                     "for mechanic " + mechanic.getName() + ".");
+                        }
+                    } else {
+                        // Mechanic went off duty - check if scheduled bookings need to be delayed
+                        int delayedBookings = bookingService.setBookingsToDelayedForMechanic(mechanic.getId());
+                        if (delayedBookings > 0) {
+                            statusLabel.setText("Status updated. " + delayedBookings + 
+                                              " booking(s) set to delayed due to mechanic unavailability.");
+                            showAlert(Alert.AlertType.WARNING, "Bookings Delayed",
+                                     delayedBookings + " scheduled booking(s) have been automatically set to delayed " +
+                                     "because mechanic " + mechanic.getName() + " is now " + newStatus + ".");
+                        }
+                    }
+                } catch (SQLException e) {
+                    System.err.println("Could not check bookings: " + e.getMessage());
                 }
             } catch (SQLException e) {
                 e.printStackTrace();

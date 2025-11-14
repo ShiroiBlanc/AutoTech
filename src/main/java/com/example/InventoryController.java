@@ -1,5 +1,6 @@
 package com.example;
 
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
@@ -7,7 +8,6 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
-import javafx.util.Callback;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 
@@ -20,6 +20,9 @@ public class InventoryController {
     @FXML private TableColumn<InventoryItem, String> nameColumn;
     @FXML private TableColumn<InventoryItem, String> categoryColumn;
     @FXML private TableColumn<InventoryItem, Integer> quantityColumn;
+    @FXML private TableColumn<InventoryItem, Integer> reservedColumn;
+    @FXML private TableColumn<InventoryItem, Integer> availableColumn;
+    @FXML private TableColumn<InventoryItem, String> expirationColumn;
     @FXML private TableColumn<InventoryItem, Double> priceColumn;
     @FXML private TableColumn<InventoryItem, String> locationColumn;
     @FXML private TableColumn<InventoryItem, Void> actionsColumn;
@@ -31,11 +34,44 @@ public class InventoryController {
 
     @FXML
     public void initialize() {
-        // Initialize columns
-        partNumberColumn.setCellValueFactory(new PropertyValueFactory<>("partNumber"));
+        // Initialize columns - use hexId instead of partNumber for ID display
+        partNumberColumn.setCellValueFactory(new PropertyValueFactory<>("hexId"));
         nameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
         categoryColumn.setCellValueFactory(new PropertyValueFactory<>("category"));
         quantityColumn.setCellValueFactory(new PropertyValueFactory<>("quantity"));
+        reservedColumn.setCellValueFactory(new PropertyValueFactory<>("reservedQuantity"));
+        availableColumn.setCellValueFactory(new PropertyValueFactory<>("availableQuantity"));
+        
+        // Custom cell factory for expiration date with color coding
+        expirationColumn.setCellValueFactory(cellData -> {
+            InventoryItem item = cellData.getValue();
+            if (item.getExpirationDate() == null) {
+                return new javafx.beans.property.SimpleStringProperty("N/A");
+            }
+            return new javafx.beans.property.SimpleStringProperty(item.getExpirationDate().toString());
+        });
+        
+        expirationColumn.setCellFactory(column -> new TableCell<InventoryItem, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null || item.equals("N/A")) {
+                    setText(item);
+                    setStyle("");
+                } else {
+                    setText(item);
+                    InventoryItem inventoryItem = getTableView().getItems().get(getIndex());
+                    if (inventoryItem.isExpired()) {
+                        setStyle("-fx-background-color: #ffcccc; -fx-text-fill: red; -fx-font-weight: bold;");
+                    } else if (inventoryItem.isNearExpiration()) {
+                        setStyle("-fx-background-color: #fff3cd; -fx-text-fill: #856404;");
+                    } else {
+                        setStyle("");
+                    }
+                }
+            }
+        });
+        
         priceColumn.setCellValueFactory(new PropertyValueFactory<>("sellingPrice"));
         locationColumn.setCellValueFactory(new PropertyValueFactory<>("location"));
         
@@ -62,13 +98,43 @@ public class InventoryController {
     }
     
     private void setupActionsColumn() {
+        // Make part number column clickable
+        partNumberColumn.setCellFactory(column -> new TableCell<InventoryItem, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setStyle("");
+                    setOnMouseClicked(null);
+                } else {
+                    setText(item);
+                    setStyle("-fx-text-fill: #0066cc; -fx-underline: true; -fx-cursor: hand;");
+                    setOnMouseClicked(event -> {
+                        InventoryItem inventoryItem = getTableView().getItems().get(getIndex());
+                        if (inventoryItem != null) {
+                            viewItemDetails(inventoryItem);
+                        }
+                    });
+                }
+            }
+        });
+        
         actionsColumn.setCellFactory(col -> new TableCell<InventoryItem, Void>() {
+            private final Button viewButton = new Button("View");
             private final Button editButton = new Button("Edit");
             private final Button restockButton = new Button("Restock");
-            private final HBox buttonBox = new HBox(5, editButton, restockButton);
+            private final HBox buttonBox = new HBox(5, viewButton, editButton, restockButton);
             
             {
                 buttonBox.setAlignment(Pos.CENTER);
+                
+                viewButton.setOnAction(e -> {
+                    InventoryItem item = getTableRow().getItem();
+                    if (item != null) {
+                        viewItemDetails(item);
+                    }
+                });
                 
                 editButton.setOnAction(e -> {
                     InventoryItem item = getTableRow().getItem();
@@ -121,6 +187,7 @@ public class InventoryController {
     private void handleRefresh() {
         searchField.clear();
         loadInventoryData();
+        statusLabel.setText("Inventory refreshed successfully.");
     }
     
     @FXML
@@ -132,10 +199,108 @@ public class InventoryController {
         showInventoryItemDialog(item);
     }
     
+    private void viewItemDetails(InventoryItem item) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("Inventory Item Details");
+        dialog.setHeaderText("Part " + item.getHexId());
+        
+        // Set button types
+        ButtonType closeButton = new ButtonType("Close", ButtonBar.ButtonData.CANCEL_CLOSE);
+        dialog.getDialogPane().getButtonTypes().add(closeButton);
+        
+        // Create form grid
+        GridPane grid = new GridPane();
+        grid.setHgap(15);
+        grid.setVgap(12);
+        grid.setPadding(new Insets(20));
+        grid.setStyle("-fx-background-color: white;");
+        
+        int row = 0;
+        
+        // Add details in a nice formatted way
+        addDetailRow(grid, row++, "Part ID:", item.getHexId(), "-fx-font-weight: bold; -fx-font-size: 14px;");
+        addDetailRow(grid, row++, "Item Name:", item.getName(), "-fx-font-weight: bold; -fx-font-size: 14px;");
+        addDetailRow(grid, row++, "Category:", item.getCategory(), "");
+        
+        // Stock information with color coding
+        addDetailRow(grid, row++, "Total Stock:", String.valueOf(item.getQuantity()), "");
+        
+        String reservedStyle = item.getReservedQuantity() > 0 ? "-fx-text-fill: orange; -fx-font-weight: bold;" : "";
+        addDetailRow(grid, row++, "Reserved:", String.valueOf(item.getReservedQuantity()), reservedStyle);
+        
+        String availableStyle = item.getAvailableQuantity() <= item.getMinimumStock() ? 
+                               "-fx-text-fill: red; -fx-font-weight: bold;" : "-fx-text-fill: green; -fx-font-weight: bold;";
+        addDetailRow(grid, row++, "Available:", String.valueOf(item.getAvailableQuantity()), availableStyle);
+        
+        String minStockStyle = item.isLowStock() ? "-fx-text-fill: red;" : "";
+        addDetailRow(grid, row++, "Minimum Stock:", String.valueOf(item.getMinimumStock()), minStockStyle);
+        
+        // Pricing
+        addDetailRow(grid, row++, "Cost Price:", String.format("₱%.2f", item.getCostPrice()), "");
+        addDetailRow(grid, row++, "Selling Price:", String.format("₱%.2f", item.getSellingPrice()), "-fx-font-weight: bold;");
+        
+        double margin = item.getSellingPrice() - item.getCostPrice();
+        double marginPercent = (margin / item.getCostPrice()) * 100;
+        addDetailRow(grid, row++, "Profit Margin:", String.format("₱%.2f (%.1f%%)", margin, marginPercent), 
+                    margin > 0 ? "-fx-text-fill: green;" : "-fx-text-fill: red;");
+        
+        // Other details
+        addDetailRow(grid, row++, "Unit:", item.getUnit(), "");
+        addDetailRow(grid, row++, "Location:", item.getLocation(), "");
+        
+        // Expiration date with color coding
+        if (item.getExpirationDate() != null) {
+            String expirationStyle = "";
+            String expirationText = item.getExpirationDate().toString();
+            if (item.isExpired()) {
+                expirationStyle = "-fx-text-fill: red; -fx-font-weight: bold;";
+                expirationText += " (EXPIRED)";
+            } else if (item.isNearExpiration()) {
+                expirationStyle = "-fx-text-fill: orange; -fx-font-weight: bold;";
+                expirationText += " (Expiring Soon)";
+            }
+            addDetailRow(grid, row++, "Expiration Date:", expirationText, expirationStyle);
+        } else {
+            addDetailRow(grid, row++, "Expiration Date:", "N/A", "");
+        }
+        
+        // Stock status
+        String stockStatus;
+        String stockStyle;
+        if (item.isLowStock()) {
+            stockStatus = "⚠ LOW STOCK - REORDER NEEDED";
+            stockStyle = "-fx-text-fill: red; -fx-font-weight: bold; -fx-font-size: 13px;";
+        } else if (item.getAvailableQuantity() == 0) {
+            stockStatus = "⚠ OUT OF STOCK (All Reserved)";
+            stockStyle = "-fx-text-fill: orange; -fx-font-weight: bold; -fx-font-size: 13px;";
+        } else {
+            stockStatus = "✓ In Stock";
+            stockStyle = "-fx-text-fill: green; -fx-font-weight: bold; -fx-font-size: 13px;";
+        }
+        addDetailRow(grid, row++, "Status:", stockStatus, stockStyle);
+        
+        dialog.getDialogPane().setContent(grid);
+        dialog.getDialogPane().setPrefWidth(500);
+        dialog.showAndWait();
+    }
+    
+    private void addDetailRow(GridPane grid, int row, String label, String value, String valueStyle) {
+        Label labelNode = new Label(label);
+        labelNode.setStyle("-fx-font-weight: bold; -fx-min-width: 150px;");
+        
+        Label valueNode = new Label(value);
+        valueNode.setStyle(valueStyle);
+        valueNode.setWrapText(true);
+        valueNode.setMaxWidth(300);
+        
+        grid.add(labelNode, 0, row);
+        grid.add(valueNode, 1, row);
+    }
+    
     private void showInventoryItemDialog(InventoryItem item) {
         Dialog<InventoryItem> dialog = new Dialog<>();
         dialog.setTitle(item == null ? "Add New Inventory Item" : "Edit Inventory Item");
-        dialog.setHeaderText(item == null ? "Enter item details" : "Edit item details");
+        dialog.setHeaderText(item == null ? "Enter item details" : "Edit part: " + item.getHexId());
         
         // Set button types
         ButtonType saveButtonType = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE);
@@ -149,27 +314,79 @@ public class InventoryController {
         
         // Create form fields
         TextField partNumberField = new TextField();
-        partNumberField.setPromptText("Part Number (required)");
+        partNumberField.setPromptText("Auto-generated");
+        partNumberField.setEditable(false); // Make it read-only
+        partNumberField.setStyle("-fx-background-color: #f0f0f0;"); // Gray background to show it's read-only
+        
+        // Auto-generate part number for new items
+        if (item == null) {
+            try {
+                String nextPartNumber = inventoryService.generateNextPartNumber();
+                partNumberField.setText(nextPartNumber);
+            } catch (SQLException e) {
+                partNumberField.setText("PART-0001");
+            }
+        }
         
         TextField nameField = new TextField();
         nameField.setPromptText("Item Name (required)");
         
         ComboBox<String> categoryComboBox = new ComboBox<>();
         categoryComboBox.setPromptText("Select Category");
-        categoryComboBox.setEditable(true);
+        categoryComboBox.setEditable(false); // Not editable unless "Other" is selected
         categoryComboBox.getItems().addAll(
             "Fluids", "Filters", "Brake System", "Engine Parts", "Electrical", 
             "Transmission", "Suspension", "Cooling System", "Tools", "Other"
         );
         
+        // Create a text field for "Other" category (initially hidden)
+        TextField otherCategoryField = new TextField();
+        otherCategoryField.setPromptText("Enter category");
+        otherCategoryField.setVisible(false);
+        otherCategoryField.setManaged(false); // Don't take up space when hidden
+        
+        // Show/hide the other category field based on selection
+        categoryComboBox.valueProperty().addListener((observable, oldValue, newValue) -> {
+            if ("Other".equals(newValue)) {
+                otherCategoryField.setVisible(true);
+                otherCategoryField.setManaged(true);
+                otherCategoryField.requestFocus();
+            } else {
+                otherCategoryField.setVisible(false);
+                otherCategoryField.setManaged(false);
+                otherCategoryField.clear();
+            }
+        });
+        
         Spinner<Integer> quantitySpinner = new Spinner<>(0, 10000, 0, 1);
         quantitySpinner.setEditable(true);
+        
+        // Make quantity spinner text field accept only numbers
+        quantitySpinner.getEditor().textProperty().addListener((observable, oldValue, newValue) -> {
+            if (!newValue.matches("\\d*")) {
+                quantitySpinner.getEditor().setText(oldValue);
+            }
+        });
         
         TextField costPriceField = new TextField();
         costPriceField.setPromptText("Cost Price");
         
+        // Add listener to cost price field to only allow numbers and decimal point
+        costPriceField.textProperty().addListener((observable, oldValue, newValue) -> {
+            if (!newValue.matches("\\d*\\.?\\d*")) {
+                costPriceField.setText(oldValue);
+            }
+        });
+        
         TextField sellingPriceField = new TextField();
         sellingPriceField.setPromptText("Selling Price");
+        
+        // Add listener to selling price field to only allow numbers and decimal point
+        sellingPriceField.textProperty().addListener((observable, oldValue, newValue) -> {
+            if (!newValue.matches("\\d*\\.?\\d*")) {
+                sellingPriceField.setText(oldValue);
+            }
+        });
         
         TextField locationField = new TextField();
         locationField.setPromptText("Storage Location");
@@ -177,11 +394,32 @@ public class InventoryController {
         Spinner<Integer> minStockSpinner = new Spinner<>(0, 1000, 0, 1);
         minStockSpinner.setEditable(true);
         
+        // Make minimum stock spinner text field accept only numbers
+        minStockSpinner.getEditor().textProperty().addListener((observable, oldValue, newValue) -> {
+            if (!newValue.matches("\\d*")) {
+                minStockSpinner.getEditor().setText(oldValue);
+            }
+        });
+        
         // Set existing values if editing
         if (item != null) {
             partNumberField.setText(item.getPartNumber());
             nameField.setText(item.getName());
-            categoryComboBox.setValue(item.getCategory());
+            
+            String existingCategory = item.getCategory();
+            // Check if existing category is in the dropdown
+            if (categoryComboBox.getItems().contains(existingCategory) && !"Other".equals(existingCategory)) {
+                categoryComboBox.setValue(existingCategory);
+            } else if (!"Other".equals(existingCategory) && !existingCategory.isEmpty()) {
+                // If it's a custom category, select "Other" and show it in the text field
+                categoryComboBox.setValue("Other");
+                otherCategoryField.setText(existingCategory);
+                otherCategoryField.setVisible(true);
+                otherCategoryField.setManaged(true);
+            } else {
+                categoryComboBox.setValue(existingCategory);
+            }
+            
             quantitySpinner.getValueFactory().setValue(item.getQuantity());
             costPriceField.setText(String.valueOf(item.getCostPrice()));
             sellingPriceField.setText(String.valueOf(item.getSellingPrice()));
@@ -199,9 +437,34 @@ public class InventoryController {
         
         grid.add(new Label("Category:"), 0, row);
         grid.add(categoryComboBox, 1, row++);
+        grid.add(otherCategoryField, 1, row++); // Add the "Other" text field
         
         grid.add(new Label("Quantity:"), 0, row);
-        grid.add(quantitySpinner, 1, row++);
+        
+        // Create HBox for quantity spinner with quick adjustment buttons
+        HBox quantityBox = new HBox(5);
+        quantityBox.getChildren().add(quantitySpinner);
+        
+        // Quick adjustment buttons
+        Button minus10 = new Button("-10");
+        Button minus5 = new Button("-5");
+        Button minus1 = new Button("-1");
+        Button plus1 = new Button("+1");
+        Button plus5 = new Button("+5");
+        Button plus10 = new Button("+10");
+        
+        // Set button actions
+        minus10.setOnAction(e -> adjustQuantity(quantitySpinner, -10));
+        minus5.setOnAction(e -> adjustQuantity(quantitySpinner, -5));
+        minus1.setOnAction(e -> adjustQuantity(quantitySpinner, -1));
+        plus1.setOnAction(e -> adjustQuantity(quantitySpinner, 1));
+        plus5.setOnAction(e -> adjustQuantity(quantitySpinner, 5));
+        plus10.setOnAction(e -> adjustQuantity(quantitySpinner, 10));
+        
+        // Add buttons to HBox
+        quantityBox.getChildren().addAll(minus10, minus5, minus1, plus1, plus5, plus10);
+        
+        grid.add(quantityBox, 1, row++);
         
         grid.add(new Label("Cost Price:"), 0, row);
         grid.add(costPriceField, 1, row++);
@@ -215,10 +478,19 @@ public class InventoryController {
         grid.add(new Label("Minimum Stock:"), 0, row);
         grid.add(minStockSpinner, 1, row++);
         
+        // Add expiration date picker
+        DatePicker expirationDatePicker = new DatePicker();
+        expirationDatePicker.setPromptText("Optional");
+        if (item != null && item.getExpirationDate() != null) {
+            expirationDatePicker.setValue(item.getExpirationDate());
+        }
+        grid.add(new Label("Expiration Date:"), 0, row);
+        grid.add(expirationDatePicker, 1, row++);
+        
         dialog.getDialogPane().setContent(grid);
         
-        // Request focus on the part number field by default
-        partNumberField.requestFocus();
+        // Request focus on the name field by default (since part number is auto-generated)
+        Platform.runLater(() -> nameField.requestFocus());
         
         // Process the result
         dialog.setResultConverter(dialogButton -> {
@@ -228,12 +500,30 @@ public class InventoryController {
                     String partNumber = partNumberField.getText().trim();
                     String name = nameField.getText().trim();
                     
-                    if (partNumber.isEmpty() || name.isEmpty()) {
-                        showAlert(Alert.AlertType.ERROR, "Error", "Part Number and Name are required");
+                    if (name.isEmpty()) {
+                        showAlert(Alert.AlertType.ERROR, "Error", "Name is required");
                         return null;
                     }
                     
-                    String category = categoryComboBox.getValue() != null ? categoryComboBox.getValue() : "";
+                    if (partNumber.isEmpty()) {
+                        showAlert(Alert.AlertType.ERROR, "Error", "Part Number generation failed");
+                        return null;
+                    }
+                    
+                    String selectedCategory = categoryComboBox.getValue() != null ? categoryComboBox.getValue() : "";
+                    String category;
+                    
+                    // If "Other" is selected, use the custom category from otherCategoryField
+                    if ("Other".equals(selectedCategory)) {
+                        category = otherCategoryField.getText().trim();
+                        if (category.isEmpty()) {
+                            showAlert(Alert.AlertType.ERROR, "Error", "Please specify the category");
+                            return null;
+                        }
+                    } else {
+                        category = selectedCategory;
+                    }
+                    
                     int quantity = quantitySpinner.getValue();
                     
                     double costPrice = 0;
@@ -258,6 +548,7 @@ public class InventoryController {
                     
                     String location = locationField.getText().trim();
                     int minimumStock = minStockSpinner.getValue();
+                    java.time.LocalDate expirationDate = expirationDatePicker.getValue();
                     
                     // Create or update inventory item
                     boolean success;
@@ -267,6 +558,16 @@ public class InventoryController {
                             partNumber, name, category, quantity,
                             costPrice, sellingPrice, location, minimumStock
                         );
+                        if (success && expirationDate != null) {
+                            // Get the newly created item's ID and set expiration date
+                            List<InventoryItem> allItems = inventoryService.getAllItems();
+                            for (InventoryItem newItem : allItems) {
+                                if (newItem.getPartNumber().equals(partNumber)) {
+                                    inventoryService.updateExpirationDate(newItem.getId(), expirationDate);
+                                    break;
+                                }
+                            }
+                        }
                         if (success) {
                             loadInventoryData();
                             statusLabel.setText("Item added successfully");
@@ -281,8 +582,10 @@ public class InventoryController {
                         item.setSellingPrice(sellingPrice);
                         item.setLocation(location);
                         item.setMinimumStock(minimumStock);
+                        item.setExpirationDate(expirationDate);
                         success = inventoryService.updateItem(item);
                         if (success) {
+                            inventoryService.updateExpirationDate(item.getId(), expirationDate);
                             inventoryTable.refresh();
                             statusLabel.setText("Item updated successfully");
                         }
@@ -306,12 +609,12 @@ public class InventoryController {
     
     private void restockItem(InventoryItem item) {
         Dialog<Integer> dialog = new Dialog<>();
-        dialog.setTitle("Restock Inventory Item");
-        dialog.setHeaderText("Restock " + item.getName());
+        dialog.setTitle("Adjust Inventory Stock");
+        dialog.setHeaderText("Adjust Stock for " + item.getName());
         
         // Set button types
-        ButtonType addButtonType = new ButtonType("Add Stock", ButtonBar.ButtonData.OK_DONE);
-        dialog.getDialogPane().getButtonTypes().addAll(addButtonType, ButtonType.CANCEL);
+        ButtonType updateButtonType = new ButtonType("Update Stock", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(updateButtonType, ButtonType.CANCEL);
         
         // Create layout
         GridPane grid = new GridPane();
@@ -320,36 +623,146 @@ public class InventoryController {
         grid.setPadding(new Insets(20));
         
         // Current quantity display
+        Label currentQtyLabel = new Label(String.valueOf(item.getQuantity()));
+        currentQtyLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
         grid.add(new Label("Current Quantity:"), 0, 0);
-        grid.add(new Label(String.valueOf(item.getQuantity())), 1, 0);
+        grid.add(currentQtyLabel, 1, 0);
         
-        // Add stock input
-        grid.add(new Label("Add Quantity:"), 0, 1);
+        // Adjustment type selection
+        grid.add(new Label("Adjustment Type:"), 0, 1);
+        ComboBox<String> adjustmentTypeComboBox = new ComboBox<>();
+        adjustmentTypeComboBox.getItems().addAll("Add Stock", "Reduce Stock");
+        adjustmentTypeComboBox.setValue("Add Stock");
+        grid.add(adjustmentTypeComboBox, 1, 1);
+        
+        // Adjustment quantity input
+        grid.add(new Label("Quantity:"), 0, 2);
         Spinner<Integer> quantitySpinner = new Spinner<>(1, 10000, 10, 1);
         quantitySpinner.setEditable(true);
-        grid.add(quantitySpinner, 1, 1);
+        
+        // Add numeric validation to spinner
+        quantitySpinner.getEditor().textProperty().addListener((observable, oldValue, newValue) -> {
+            if (!newValue.matches("\\d*")) {
+                quantitySpinner.getEditor().setText(oldValue);
+            }
+        });
+        
+        // Create HBox for quantity spinner with quick adjustment buttons
+        HBox restockQuantityBox = new HBox(5);
+        restockQuantityBox.getChildren().add(quantitySpinner);
+        
+        // Quick adjustment buttons for restock
+        Button restockMinus10 = new Button("-10");
+        Button restockMinus5 = new Button("-5");
+        Button restockMinus1 = new Button("-1");
+        Button restockPlus1 = new Button("+1");
+        Button restockPlus5 = new Button("+5");
+        Button restockPlus10 = new Button("+10");
+        
+        // Set button actions
+        restockMinus10.setOnAction(e -> adjustQuantity(quantitySpinner, -10));
+        restockMinus5.setOnAction(e -> adjustQuantity(quantitySpinner, -5));
+        restockMinus1.setOnAction(e -> adjustQuantity(quantitySpinner, -1));
+        restockPlus1.setOnAction(e -> adjustQuantity(quantitySpinner, 1));
+        restockPlus5.setOnAction(e -> adjustQuantity(quantitySpinner, 5));
+        restockPlus10.setOnAction(e -> adjustQuantity(quantitySpinner, 10));
+        
+        // Add buttons to HBox
+        restockQuantityBox.getChildren().addAll(restockMinus10, restockMinus5, restockMinus1, 
+                                                 restockPlus1, restockPlus5, restockPlus10);
+        
+        grid.add(restockQuantityBox, 1, 2);
+        
+        // Preview of new quantity
+        Label newQtyLabel = new Label();
+        newQtyLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px; -fx-text-fill: #0066cc;");
+        grid.add(new Label("New Quantity:"), 0, 3);
+        grid.add(newQtyLabel, 1, 3);
+        
+        // Update preview when spinner or type changes
+        Runnable updatePreview = () -> {
+            int adjustment = quantitySpinner.getValue();
+            int newQuantity;
+            
+            if ("Add Stock".equals(adjustmentTypeComboBox.getValue())) {
+                newQuantity = item.getQuantity() + adjustment;
+            } else {
+                newQuantity = item.getQuantity() - adjustment;
+            }
+            
+            newQtyLabel.setText(String.valueOf(Math.max(0, newQuantity)));
+            
+            // Color code the preview
+            if (newQuantity < 0) {
+                newQtyLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px; -fx-text-fill: red;");
+            } else if (newQuantity < item.getMinimumStock()) {
+                newQtyLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px; -fx-text-fill: orange;");
+            } else {
+                newQtyLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px; -fx-text-fill: green;");
+            }
+        };
+        
+        quantitySpinner.valueProperty().addListener((obs, oldVal, newVal) -> updatePreview.run());
+        adjustmentTypeComboBox.valueProperty().addListener((obs, oldVal, newVal) -> updatePreview.run());
+        updatePreview.run(); // Initial update
         
         dialog.getDialogPane().setContent(grid);
         
         // Process the result
         dialog.setResultConverter(dialogButton -> {
-            if (dialogButton == addButtonType) {
-                return quantitySpinner.getValue();
+            if (dialogButton == updateButtonType) {
+                int adjustment = quantitySpinner.getValue();
+                if ("Reduce Stock".equals(adjustmentTypeComboBox.getValue())) {
+                    adjustment = -adjustment;
+                }
+                return adjustment;
             }
             return null;
         });
         
-        dialog.showAndWait().ifPresent(quantity -> {
+        dialog.showAndWait().ifPresent(adjustment -> {
             try {
+                // Calculate new quantity
+                int newQuantity = item.getQuantity() + adjustment;
+                
+                // Validate new quantity
+                if (newQuantity < 0) {
+                    showAlert(Alert.AlertType.ERROR, "Invalid Quantity", 
+                            "Cannot reduce stock below 0. Current stock: " + item.getQuantity());
+                    return;
+                }
+                
                 // Update the item's quantity in database
-                int newQuantity = item.getQuantity() + quantity;
                 boolean success = inventoryService.updateItemQuantity(item.getId(), newQuantity);
                 
                 if (success) {
                     // Update local model
                     item.setQuantity(newQuantity);
                     inventoryTable.refresh();
-                    statusLabel.setText("Added " + quantity + " units to " + item.getName());
+                    
+                    // Display appropriate message
+                    String action = (adjustment > 0) ? "Added" : "Reduced";
+                    String message = action + " " + Math.abs(adjustment) + " units. New stock: " + newQuantity;
+                    statusLabel.setText(message);
+                    
+                    // Check if any delayed bookings can now proceed
+                    if (adjustment > 0) { // Only check when adding stock
+                        System.out.println("=== RESTOCK: Checking delayed bookings after adding " + adjustment + " units ===");
+                        try {
+                            ServiceBookingService bookingService = new ServiceBookingService();
+                            int updatedBookings = bookingService.checkAndUpdateDelayedBookings();
+                            System.out.println("=== RESTOCK: Updated " + updatedBookings + " bookings ===");
+                            if (updatedBookings > 0) {
+                                message += "\n\n✓ " + updatedBookings + " delayed booking(s) automatically updated to scheduled!";
+                            }
+                        } catch (SQLException e) {
+                            System.err.println("Could not check delayed bookings: " + e.getMessage());
+                            e.printStackTrace();
+                        }
+                    }
+                    
+                    showAlert(Alert.AlertType.INFORMATION, "Stock Updated", 
+                            message + " for " + item.getName());
                 } else {
                     showAlert(Alert.AlertType.ERROR, "Error", "Failed to update quantity");
                 }
@@ -358,6 +771,15 @@ public class InventoryController {
                 showAlert(Alert.AlertType.ERROR, "Error", "An error occurred: " + e.getMessage());
             }
         });
+    }
+    
+    private void adjustQuantity(Spinner<Integer> spinner, int adjustment) {
+        int currentValue = spinner.getValue();
+        int newValue = currentValue + adjustment;
+        // Ensure value stays within spinner bounds
+        if (newValue >= 0 && newValue <= 10000) {
+            spinner.getValueFactory().setValue(newValue);
+        }
     }
     
     private void showAlert(Alert.AlertType type, String title, String content) {
