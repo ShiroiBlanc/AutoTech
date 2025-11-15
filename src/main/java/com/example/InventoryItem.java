@@ -168,7 +168,7 @@ public class InventoryItem {
     }
     
     public boolean isLowStock() {
-        return quantity < minimumStock;
+        return quantity <= minimumStock;
     }
     
     public boolean isLowAvailableStock() {

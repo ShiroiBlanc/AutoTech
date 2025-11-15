@@ -562,8 +562,16 @@ public class MechanicController {
                                 "Failed to " + (mechanic == null ? "add" : "update") + " mechanic");
                     }
                 } catch (SQLException e) {
-                    e.printStackTrace();
-                    showAlert(Alert.AlertType.ERROR, "Error", e.getMessage());
+                    // User-friendly error message instead of stack trace
+                    if (e.getMessage().contains("already assigned as a mechanic")) {
+                        showAlert(Alert.AlertType.WARNING, "Duplicate Mechanic", 
+                                 "This user account is already assigned as a mechanic.\n\n" +
+                                 "Each user can only be assigned as a mechanic once.\n" +
+                                 "Please select a different user account.");
+                    } else {
+                        e.printStackTrace();
+                        showAlert(Alert.AlertType.ERROR, "Error", e.getMessage());
+                    }
                 }
             }
             return null;
@@ -606,7 +614,25 @@ public class MechanicController {
             TableColumn<ServiceOrder, String> descCol = new TableColumn<>("Description");
             descCol.setCellValueFactory(new PropertyValueFactory<>("description"));
             
-            jobTable.getColumns().addAll(idCol, dateCol, customerCol, vehicleCol, statusCol, descCol);
+            TableColumn<ServiceOrder, Void> actionsCol = new TableColumn<>("Actions");
+            actionsCol.setCellFactory(col -> new TableCell<ServiceOrder, Void>() {
+                private final Button viewBtn = new Button("View Details");
+                {
+                    viewBtn.setOnAction(e -> {
+                        ServiceOrder order = getTableRow().getItem();
+                        if (order != null) {
+                            viewJobDetails(order);
+                        }
+                    });
+                }
+                @Override
+                protected void updateItem(Void item, boolean empty) {
+                    super.updateItem(item, empty);
+                    setGraphic(empty ? null : viewBtn);
+                }
+            });
+            
+            jobTable.getColumns().addAll(idCol, dateCol, customerCol, vehicleCol, statusCol, descCol, actionsCol);
             
             // Load job orders for this mechanic
             List<ServiceOrder> jobs = mechanicService.getMechanicJobs(mechanic.getId());
@@ -735,6 +761,275 @@ public class MechanicController {
         alert.setTitle(title);
         alert.setContentText(content);
         alert.showAndWait();
+    }
+    
+    private void viewJobDetails(ServiceOrder order) {
+        try {
+            // Get full booking details from database
+            ServiceBookingService bookingService = new ServiceBookingService();
+            ServiceBookingViewModel booking = bookingService.getBookingById(order.getId());
+            
+            if (booking == null) {
+                showAlert(Alert.AlertType.ERROR, "Error", "Could not load booking details.");
+                return;
+            }
+            
+            Dialog<Void> dialog = new Dialog<>();
+            dialog.setTitle("Job Details");
+            dialog.setHeaderText("Service Booking Details - " + booking.getHexId());
+            
+            // Create scrollable content
+            ScrollPane scrollPane = new ScrollPane();
+            scrollPane.setFitToWidth(true);
+            scrollPane.setPrefHeight(600);
+            
+            VBox mainContainer = new VBox(15);
+            mainContainer.setPadding(new Insets(20));
+            mainContainer.setStyle("-fx-background-color: white;");
+            
+            // === BOOKING INFORMATION SECTION ===
+            VBox bookingSection = new VBox(10);
+            bookingSection.setStyle("-fx-background-color: #f5f5f5; -fx-padding: 15; -fx-background-radius: 5;");
+            Label bookingHeader = new Label("📋 BOOKING INFORMATION");
+            bookingHeader.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #1976D2;");
+            bookingSection.getChildren().add(bookingHeader);
+            
+            GridPane bookingGrid = new GridPane();
+            bookingGrid.setHgap(15);
+            bookingGrid.setVgap(8);
+            bookingGrid.setPadding(new Insets(10, 0, 0, 0));
+            
+            int row = 0;
+            addDetailRow(bookingGrid, row++, "Booking ID:", booking.getHexId(), true);
+            addDetailRow(bookingGrid, row++, "Service Type:", booking.getServiceType(), false);
+            addDetailRow(bookingGrid, row++, "Date:", booking.getDate().toString(), false);
+            addDetailRow(bookingGrid, row++, "Time:", booking.getTime(), false);
+            addDetailRow(bookingGrid, row++, "Status:", booking.getStatus().toUpperCase(), false);
+            
+            bookingSection.getChildren().add(bookingGrid);
+            mainContainer.getChildren().add(bookingSection);
+            
+            // === CUSTOMER & VEHICLE SECTION ===
+            VBox customerSection = new VBox(10);
+            customerSection.setStyle("-fx-background-color: #e3f2fd; -fx-padding: 15; -fx-background-radius: 5;");
+            Label customerHeader = new Label("👤 CUSTOMER & VEHICLE");
+            customerHeader.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #0288D1;");
+            customerSection.getChildren().add(customerHeader);
+            
+            GridPane customerGrid = new GridPane();
+            customerGrid.setHgap(15);
+            customerGrid.setVgap(8);
+            customerGrid.setPadding(new Insets(10, 0, 0, 0));
+            
+            row = 0;
+            addDetailRow(customerGrid, row++, "Customer Name:", booking.getCustomer().getName(), false);
+            
+            // Get full customer details
+            try {
+                Customer fullCustomer = CustomerService.getInstance().getCustomerById(booking.getCustomer().getId());
+                if (fullCustomer != null) {
+                    if (fullCustomer.getPhone() != null && !fullCustomer.getPhone().isEmpty()) {
+                        addDetailRow(customerGrid, row++, "Phone:", fullCustomer.getPhone(), false);
+                    }
+                    if (fullCustomer.getEmail() != null && !fullCustomer.getEmail().isEmpty()) {
+                        addDetailRow(customerGrid, row++, "Email:", fullCustomer.getEmail(), false);
+                    }
+                }
+            } catch (SQLException e) {
+                System.err.println("Could not load customer details: " + e.getMessage());
+            }
+            
+            addDetailRow(customerGrid, row++, "Vehicle:", booking.getVehicle().getModel(), false);
+            
+            customerSection.getChildren().add(customerGrid);
+            mainContainer.getChildren().add(customerSection);
+            
+            // === MECHANIC SECTION ===
+            VBox mechanicSection = new VBox(10);
+            mechanicSection.setStyle("-fx-background-color: #fff3e0; -fx-padding: 15; -fx-background-radius: 5;");
+            Label mechanicHeader = new Label("🔧 ASSIGNED MECHANIC");
+            mechanicHeader.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #E65100;");
+            mechanicSection.getChildren().add(mechanicHeader);
+            
+            GridPane mechanicGrid = new GridPane();
+            mechanicGrid.setHgap(15);
+            mechanicGrid.setVgap(8);
+            mechanicGrid.setPadding(new Insets(10, 0, 0, 0));
+            
+            row = 0;
+            addDetailRow(mechanicGrid, row++, "Name:", booking.getMechanic().getName(), false);
+            if (booking.getMechanic().getSpecialties() != null && !booking.getMechanic().getSpecialties().isEmpty()) {
+                String specialties = String.join(", ", booking.getMechanic().getSpecialties());
+                addDetailRow(mechanicGrid, row++, "Specialties:", specialties, false);
+            }
+            
+            mechanicSection.getChildren().add(mechanicGrid);
+            mainContainer.getChildren().add(mechanicSection);
+            
+            // === SERVICE DESCRIPTION SECTION ===
+            if (booking.getServiceDescription() != null && !booking.getServiceDescription().trim().isEmpty()) {
+                VBox descSection = new VBox(10);
+                descSection.setStyle("-fx-background-color: #f3e5f5; -fx-padding: 15; -fx-background-radius: 5;");
+                Label descHeader = new Label("📝 SERVICE DESCRIPTION");
+                descHeader.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #6A1B9A;");
+                descSection.getChildren().add(descHeader);
+                
+                TextArea descArea = new TextArea(booking.getServiceDescription());
+                descArea.setEditable(false);
+                descArea.setWrapText(true);
+                descArea.setPrefRowCount(4);
+                descArea.setStyle("-fx-control-inner-background: white;");
+                descSection.getChildren().add(descArea);
+                
+                mainContainer.getChildren().add(descSection);
+            }
+            
+            // === PARTS & MATERIALS SECTION ===
+            try {
+                List<BookingPart> parts = bookingService.getBookingParts(booking.getId());
+                if (!parts.isEmpty()) {
+                    VBox partsSection = new VBox(10);
+                    partsSection.setStyle("-fx-background-color: #e8f5e9; -fx-padding: 15; -fx-background-radius: 5;");
+                    Label partsHeader = new Label("🔩 PARTS & MATERIALS USED");
+                    partsHeader.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #2E7D32;");
+                    partsSection.getChildren().add(partsHeader);
+                    
+                    // Create parts table
+                    TableView<BookingPart> partsTable = new TableView<>();
+                    partsTable.setPrefHeight(200);
+                    partsTable.setItems(FXCollections.observableArrayList(parts));
+                    partsTable.setStyle("-fx-background-color: white;");
+                    
+                    TableColumn<BookingPart, String> nameCol = new TableColumn<>("Part Name");
+                    nameCol.setCellValueFactory(new PropertyValueFactory<>("partName"));
+                    nameCol.setPrefWidth(300);
+                    
+                    TableColumn<BookingPart, Integer> qtyCol = new TableColumn<>("Quantity");
+                    qtyCol.setCellValueFactory(new PropertyValueFactory<>("quantity"));
+                    qtyCol.setPrefWidth(100);
+                    qtyCol.setStyle("-fx-alignment: CENTER;");
+                    
+                    TableColumn<BookingPart, Double> priceCol = new TableColumn<>("Unit Price");
+                    priceCol.setCellValueFactory(new PropertyValueFactory<>("price"));
+                    priceCol.setPrefWidth(120);
+                    priceCol.setCellFactory(col -> new TableCell<BookingPart, Double>() {
+                        @Override
+                        protected void updateItem(Double price, boolean empty) {
+                            super.updateItem(price, empty);
+                            if (empty || price == null) {
+                                setText(null);
+                            } else {
+                                setText("₱" + String.format("%.2f", price));
+                                setStyle("-fx-alignment: CENTER-RIGHT;");
+                            }
+                        }
+                    });
+                    
+                    TableColumn<BookingPart, Double> totalCol = new TableColumn<>("Subtotal");
+                    totalCol.setCellValueFactory(cellData -> 
+                        new javafx.beans.property.SimpleDoubleProperty(cellData.getValue().getTotalCost()).asObject());
+                    totalCol.setPrefWidth(120);
+                    totalCol.setCellFactory(col -> new TableCell<BookingPart, Double>() {
+                        @Override
+                        protected void updateItem(Double total, boolean empty) {
+                            super.updateItem(total, empty);
+                            if (empty || total == null) {
+                                setText(null);
+                            } else {
+                                setText("₱" + String.format("%.2f", total));
+                                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-weight: bold;");
+                            }
+                        }
+                    });
+                    
+                    partsTable.getColumns().addAll(nameCol, qtyCol, priceCol, totalCol);
+                    partsSection.getChildren().add(partsTable);
+                    
+                    // Calculate total parts cost
+                    double totalPartsCost = parts.stream().mapToDouble(BookingPart::getTotalCost).sum();
+                    Label totalPartsLabel = new Label("Total Parts Cost: ₱" + String.format("%.2f", totalPartsCost));
+                    totalPartsLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2E7D32; -fx-padding: 10 0 0 0;");
+                    partsSection.getChildren().add(totalPartsLabel);
+                    
+                    mainContainer.getChildren().add(partsSection);
+                } else {
+                    VBox noPartsSection = new VBox(10);
+                    noPartsSection.setStyle("-fx-background-color: #fafafa; -fx-padding: 15; -fx-background-radius: 5; -fx-border-color: #e0e0e0; -fx-border-width: 1; -fx-border-radius: 5;");
+                    Label noPartsLabel = new Label("ℹ️  No parts or materials used for this service");
+                    noPartsLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #757575;");
+                    noPartsSection.getChildren().add(noPartsLabel);
+                    mainContainer.getChildren().add(noPartsSection);
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+            
+            // === BILLING SECTION (if completed) ===
+            if ("completed".equalsIgnoreCase(booking.getStatus())) {
+                try {
+                    BillingService billingService = BillingService.getInstance();
+                    Bill bill = billingService.getBillByServiceId(booking.getId());
+                    
+                    if (bill != null) {
+                        VBox billingSection = new VBox(10);
+                        billingSection.setStyle("-fx-background-color: #e8f5e9; -fx-padding: 15; -fx-background-radius: 5; -fx-border-color: #4CAF50; -fx-border-width: 2; -fx-border-radius: 5;");
+                        Label billingHeader = new Label("💰 BILLING INFORMATION");
+                        billingHeader.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #2E7D32;");
+                        billingSection.getChildren().add(billingHeader);
+                        
+                        GridPane billingGrid = new GridPane();
+                        billingGrid.setHgap(15);
+                        billingGrid.setVgap(8);
+                        billingGrid.setPadding(new Insets(10, 0, 0, 0));
+                        
+                        row = 0;
+                        addDetailRow(billingGrid, row++, "Bill ID:", bill.getHexId(), true);
+                        addDetailRow(billingGrid, row++, "Bill Date:", bill.getBillDate().toString(), false);
+                        addDetailRow(billingGrid, row++, "Payment Status:", bill.getPaymentStatus().toUpperCase(), false);
+                        addDetailRow(billingGrid, row++, "Total Amount:", "₱" + String.format("%.2f", bill.getAmount()), false);
+                        
+                        billingSection.getChildren().add(billingGrid);
+                        
+                        Label totalAmountLabel = new Label("TOTAL AMOUNT DUE: ₱" + String.format("%.2f", bill.getAmount()));
+                        totalAmountLabel.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #1B5E20; -fx-padding: 10 0 0 0;");
+                        billingSection.getChildren().add(totalAmountLabel);
+                        
+                        mainContainer.getChildren().add(billingSection);
+                    }
+                } catch (SQLException e) {
+                    System.err.println("Could not load billing information: " + e.getMessage());
+                }
+            }
+            
+            scrollPane.setContent(mainContainer);
+            
+            // Add close button
+            ButtonType closeButton = new ButtonType("Close", ButtonBar.ButtonData.CANCEL_CLOSE);
+            dialog.getDialogPane().getButtonTypes().add(closeButton);
+            
+            dialog.getDialogPane().setContent(scrollPane);
+            dialog.getDialogPane().setMinWidth(750);
+            dialog.getDialogPane().setMinHeight(650);
+            dialog.showAndWait();
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Error", "Failed to load job details: " + e.getMessage());
+        }
+    }
+    
+    // Helper method to add detail rows consistently
+    private void addDetailRow(GridPane grid, int row, String label, String value, boolean bold) {
+        Label labelNode = new Label(label);
+        labelNode.setStyle("-fx-font-weight: bold; -fx-min-width: 150px;");
+        
+        Label valueNode = new Label(value != null ? value : "N/A");
+        if (bold) {
+            valueNode.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
+        }
+        
+        grid.add(labelNode, 0, row);
+        grid.add(valueNode, 1, row);
     }
     
     // Service Order model class for the job orders table

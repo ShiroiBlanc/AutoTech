@@ -16,6 +16,9 @@ import java.sql.*;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.Optional;
 
 public class ServiceBookingController {
 
@@ -53,6 +56,12 @@ public class ServiceBookingController {
     private ComboBox<String> timeComboBox;
     private ComboBox<String> serviceTypeComboBox;
     private TextArea serviceDescriptionArea;
+    
+    // Multiple services management components
+    private ObservableList<Map<String, String>> servicesList;
+    private ListView<String> servicesListView;
+    private Button addServiceButton;
+    private Button removeServiceButton;
     
     // Parts selection components
     private TableView<BookingPart> selectedPartsTable;
@@ -237,11 +246,16 @@ public class ServiceBookingController {
             private final Button viewButton = new Button("View");
             private final Button editButton = new Button("Edit");
             private final Button statusButton = new Button("Status");
+            private final Button undoButton = new Button("↺ Undo");
+            private final Button confirmButton = new Button("✓ Confirm");
             private final HBox buttonBox = new HBox(5);
             
             {
-                buttonBox.getChildren().addAll(viewButton, editButton, statusButton);
                 buttonBox.setAlignment(Pos.CENTER);
+                
+                // Style buttons
+                undoButton.setStyle("-fx-background-color: #ff9800; -fx-text-fill: white;");
+                confirmButton.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;");
                 
                 viewButton.setOnAction(e -> {
                     ServiceBookingViewModel booking = getTableRow().getItem();
@@ -263,12 +277,62 @@ public class ServiceBookingController {
                         updateBookingStatus(booking);
                     }
                 });
+                
+                undoButton.setOnAction(e -> {
+                    ServiceBookingViewModel booking = getTableRow().getItem();
+                    if (booking != null) {
+                        undoBookingStatus(booking);
+                    }
+                });
+                
+                confirmButton.setOnAction(e -> {
+                    ServiceBookingViewModel booking = getTableRow().getItem();
+                    if (booking != null) {
+                        confirmAndCreateBill(booking);
+                    }
+                });
             }
 
             @Override
             protected void updateItem(Void item, boolean empty) {
                 super.updateItem(item, empty);
-                setGraphic(empty ? null : buttonBox);
+                if (empty) {
+                    setGraphic(null);
+                } else {
+                    ServiceBookingViewModel booking = getTableRow().getItem();
+                    if (booking != null) {
+                        String status = booking.getStatus();
+                        User currentUser = UserService.getInstance().getCurrentUser();
+                        boolean isAdminOrCashier = currentUser != null && 
+                            (currentUser.getRole() == User.UserRole.ADMIN || 
+                             currentUser.getRole() == User.UserRole.CASHIER);
+                        
+                        if ("completed".equals(status)) {
+                            // Check if bill already exists
+                            try {
+                                Bill existingBill = BillingService.getInstance().getBillByServiceId(booking.getId());
+                                if (existingBill != null) {
+                                    // Bill exists, show only view and undo
+                                    buttonBox.getChildren().setAll(viewButton, undoButton);
+                                } else if (isAdminOrCashier) {
+                                    // No bill yet, admin/cashier can confirm
+                                    buttonBox.getChildren().setAll(viewButton, confirmButton, undoButton);
+                                } else {
+                                    // Mechanic can only view and undo
+                                    buttonBox.getChildren().setAll(viewButton, undoButton);
+                                }
+                            } catch (Exception e) {
+                                // On error, show basic buttons
+                                buttonBox.getChildren().setAll(viewButton, undoButton);
+                            }
+                        } else if ("cancelled".equals(status)) {
+                            buttonBox.getChildren().setAll(viewButton, undoButton);
+                        } else {
+                            buttonBox.getChildren().setAll(viewButton, editButton, statusButton);
+                        }
+                    }
+                    setGraphic(buttonBox);
+                }
             }
         });
     }
@@ -396,15 +460,27 @@ public class ServiceBookingController {
         });
         
         TableColumn<ServiceBookingViewModel, Void> cActionsCol = new TableColumn<>("Actions");
-        cActionsCol.setPrefWidth(120);
+        cActionsCol.setPrefWidth(150);
         cActionsCol.setCellFactory(column -> new TableCell<ServiceBookingViewModel, Void>() {
             private final Button viewButton = new Button("View");
+            private final Button undoButton = new Button("↺ Undo");
+            private final HBox buttonBox = new HBox(5);
             
             {
+                buttonBox.setAlignment(Pos.CENTER);
+                undoButton.setStyle("-fx-background-color: #ff9800; -fx-text-fill: white;");
+                
                 viewButton.setOnAction(e -> {
                     ServiceBookingViewModel booking = getTableRow().getItem();
                     if (booking != null) {
                         viewBookingDetails(booking);
+                    }
+                });
+                
+                undoButton.setOnAction(e -> {
+                    ServiceBookingViewModel booking = getTableRow().getItem();
+                    if (booking != null) {
+                        undoBookingStatus(booking);
                     }
                 });
             }
@@ -412,7 +488,12 @@ public class ServiceBookingController {
             @Override
             protected void updateItem(Void item, boolean empty) {
                 super.updateItem(item, empty);
-                setGraphic(empty ? null : viewButton);
+                if (empty) {
+                    setGraphic(null);
+                } else {
+                    buttonBox.getChildren().setAll(viewButton, undoButton);
+                    setGraphic(buttonBox);
+                }
             }
         });
         
@@ -475,104 +556,260 @@ public class ServiceBookingController {
         try {
             Dialog<Void> dialog = new Dialog<>();
             dialog.setTitle("Booking Details");
-            dialog.setHeaderText("Booking " + booking.getHexId() + " Details");
+            dialog.setHeaderText("Service Booking Details - " + booking.getHexId());
             
-            // Create the content layout
-            GridPane grid = new GridPane();
-            grid.setHgap(10);
-            grid.setVgap(10);
-            grid.setPadding(new Insets(20));
+            // Create scrollable content
+            ScrollPane scrollPane = new ScrollPane();
+            scrollPane.setFitToWidth(true);
+            scrollPane.setPrefHeight(600);
             
-            // Add booking details
+            VBox mainContainer = new VBox(15);
+            mainContainer.setPadding(new Insets(20));
+            mainContainer.setStyle("-fx-background-color: white;");
+            
+            // === BOOKING INFORMATION SECTION ===
+            VBox bookingSection = new VBox(10);
+            bookingSection.setStyle("-fx-background-color: #f5f5f5; -fx-padding: 15; -fx-background-radius: 5;");
+            Label bookingHeader = new Label("📋 BOOKING INFORMATION");
+            bookingHeader.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #1976D2;");
+            bookingSection.getChildren().add(bookingHeader);
+            
+            GridPane bookingGrid = new GridPane();
+            bookingGrid.setHgap(15);
+            bookingGrid.setVgap(8);
+            bookingGrid.setPadding(new Insets(10, 0, 0, 0));
+            
             int row = 0;
-            grid.add(new Label("Booking ID:"), 0, row);
-            grid.add(new Label(booking.getHexId()), 1, row++);
+            addDetailRow(bookingGrid, row++, "Booking ID:", booking.getHexId(), true);
+            addDetailRow(bookingGrid, row++, "Service Type:", booking.getServiceType(), false);
+            addDetailRow(bookingGrid, row++, "Date:", booking.getDate().toString(), false);
+            addDetailRow(bookingGrid, row++, "Time:", booking.getTime(), false);
+            addDetailRow(bookingGrid, row++, "Status:", booking.getStatus().toUpperCase(), false);
             
-            grid.add(new Label("Date:"), 0, row);
-            grid.add(new Label(booking.getDate().toString()), 1, row++);
+            bookingSection.getChildren().add(bookingGrid);
+            mainContainer.getChildren().add(bookingSection);
             
-            grid.add(new Label("Time:"), 0, row);
-            grid.add(new Label(booking.getTime()), 1, row++);
+            // === CUSTOMER & VEHICLE SECTION ===
+            VBox customerSection = new VBox(10);
+            customerSection.setStyle("-fx-background-color: #e3f2fd; -fx-padding: 15; -fx-background-radius: 5;");
+            Label customerHeader = new Label("👤 CUSTOMER & VEHICLE");
+            customerHeader.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #0288D1;");
+            customerSection.getChildren().add(customerHeader);
             
-            grid.add(new Label("Customer:"), 0, row);
-            grid.add(new Label(booking.getCustomer().getName()), 1, row++);
+            GridPane customerGrid = new GridPane();
+            customerGrid.setHgap(15);
+            customerGrid.setVgap(8);
+            customerGrid.setPadding(new Insets(10, 0, 0, 0));
             
-            grid.add(new Label("Vehicle:"), 0, row);
-            grid.add(new Label(booking.getVehicle().getModel()), 1, row++);
+            row = 0;
+            addDetailRow(customerGrid, row++, "Customer Name:", booking.getCustomer().getName(), false);
             
-            grid.add(new Label("Mechanic:"), 0, row);
-            grid.add(new Label(booking.getMechanic().getName()), 1, row++);
+            // Get full customer details
+            try {
+                Customer fullCustomer = CustomerService.getInstance().getCustomerById(booking.getCustomer().getId());
+                if (fullCustomer != null) {
+                    if (fullCustomer.getPhone() != null && !fullCustomer.getPhone().isEmpty()) {
+                        addDetailRow(customerGrid, row++, "Phone:", fullCustomer.getPhone(), false);
+                    }
+                    if (fullCustomer.getEmail() != null && !fullCustomer.getEmail().isEmpty()) {
+                        addDetailRow(customerGrid, row++, "Email:", fullCustomer.getEmail(), false);
+                    }
+                }
+            } catch (SQLException e) {
+                System.err.println("Could not load customer details: " + e.getMessage());
+            }
             
-            grid.add(new Label("Service Type:"), 0, row);
-            grid.add(new Label(booking.getServiceType()), 1, row++);
+            addDetailRow(customerGrid, row++, "Vehicle:", booking.getVehicle().getModel(), false);
             
-            grid.add(new Label("Description:"), 0, row);
-            TextArea descArea = new TextArea(booking.getServiceDescription());
-            descArea.setEditable(false);
-            descArea.setPrefRowCount(4);
-            descArea.setPrefColumnCount(30);
-            grid.add(descArea, 1, row++);
+            customerSection.getChildren().add(customerGrid);
+            mainContainer.getChildren().add(customerSection);
             
-            grid.add(new Label("Status:"), 0, row);
-            grid.add(new Label(booking.getStatus()), 1, row++);
+            // === MECHANIC SECTION ===
+            VBox mechanicSection = new VBox(10);
+            mechanicSection.setStyle("-fx-background-color: #fff3e0; -fx-padding: 15; -fx-background-radius: 5;");
+            Label mechanicHeader = new Label("🔧 ASSIGNED MECHANIC");
+            mechanicHeader.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #E65100;");
+            mechanicSection.getChildren().add(mechanicHeader);
             
-            // Add Parts section
+            GridPane mechanicGrid = new GridPane();
+            mechanicGrid.setHgap(15);
+            mechanicGrid.setVgap(8);
+            mechanicGrid.setPadding(new Insets(10, 0, 0, 0));
+            
+            row = 0;
+            addDetailRow(mechanicGrid, row++, "Name:", booking.getMechanic().getName(), false);
+            if (booking.getMechanic().getSpecialties() != null && !booking.getMechanic().getSpecialties().isEmpty()) {
+                String specialties = String.join(", ", booking.getMechanic().getSpecialties());
+                addDetailRow(mechanicGrid, row++, "Specialties:", specialties, false);
+            }
+            
+            mechanicSection.getChildren().add(mechanicGrid);
+            mainContainer.getChildren().add(mechanicSection);
+            
+            // === SERVICE DESCRIPTION SECTION ===
+            if (booking.getServiceDescription() != null && !booking.getServiceDescription().trim().isEmpty()) {
+                VBox descSection = new VBox(10);
+                descSection.setStyle("-fx-background-color: #f3e5f5; -fx-padding: 15; -fx-background-radius: 5;");
+                Label descHeader = new Label("📝 SERVICE DESCRIPTION");
+                descHeader.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #6A1B9A;");
+                descSection.getChildren().add(descHeader);
+                
+                TextArea descArea = new TextArea(booking.getServiceDescription());
+                descArea.setEditable(false);
+                descArea.setWrapText(true);
+                descArea.setPrefRowCount(4);
+                descArea.setStyle("-fx-control-inner-background: white;");
+                descSection.getChildren().add(descArea);
+                
+                mainContainer.getChildren().add(descSection);
+            }
+            
+            // === PARTS & MATERIALS SECTION ===
             try {
                 List<BookingPart> parts = bookingService.getBookingParts(booking.getId());
                 if (!parts.isEmpty()) {
-                    grid.add(new Label("Parts Used:"), 0, row++);
+                    VBox partsSection = new VBox(10);
+                    partsSection.setStyle("-fx-background-color: #e8f5e9; -fx-padding: 15; -fx-background-radius: 5;");
+                    Label partsHeader = new Label("🔩 PARTS & MATERIALS USED");
+                    partsHeader.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #2E7D32;");
+                    partsSection.getChildren().add(partsHeader);
                     
                     // Create parts table
                     TableView<BookingPart> partsTable = new TableView<>();
-                    partsTable.setPrefHeight(150);
+                    partsTable.setPrefHeight(200);
                     partsTable.setItems(FXCollections.observableArrayList(parts));
+                    partsTable.setStyle("-fx-background-color: white;");
                     
                     TableColumn<BookingPart, String> nameCol = new TableColumn<>("Part Name");
                     nameCol.setCellValueFactory(new PropertyValueFactory<>("partName"));
-                    nameCol.setPrefWidth(200);
+                    nameCol.setPrefWidth(300);
                     
                     TableColumn<BookingPart, Integer> qtyCol = new TableColumn<>("Quantity");
                     qtyCol.setCellValueFactory(new PropertyValueFactory<>("quantity"));
-                    qtyCol.setPrefWidth(80);
+                    qtyCol.setPrefWidth(100);
+                    qtyCol.setStyle("-fx-alignment: CENTER;");
                     
-                    TableColumn<BookingPart, Double> priceCol = new TableColumn<>("Price");
+                    TableColumn<BookingPart, Double> priceCol = new TableColumn<>("Unit Price");
                     priceCol.setCellValueFactory(new PropertyValueFactory<>("price"));
-                    priceCol.setPrefWidth(80);
+                    priceCol.setPrefWidth(120);
+                    priceCol.setCellFactory(col -> new TableCell<BookingPart, Double>() {
+                        @Override
+                        protected void updateItem(Double price, boolean empty) {
+                            super.updateItem(price, empty);
+                            if (empty || price == null) {
+                                setText(null);
+                            } else {
+                                setText("₱" + String.format("%.2f", price));
+                                setStyle("-fx-alignment: CENTER-RIGHT;");
+                            }
+                        }
+                    });
                     
-                    TableColumn<BookingPart, Double> totalCol = new TableColumn<>("Total");
+                    TableColumn<BookingPart, Double> totalCol = new TableColumn<>("Subtotal");
                     totalCol.setCellValueFactory(cellData -> 
                         new javafx.beans.property.SimpleDoubleProperty(cellData.getValue().getTotalCost()).asObject());
-                    totalCol.setPrefWidth(80);
+                    totalCol.setPrefWidth(120);
+                    totalCol.setCellFactory(col -> new TableCell<BookingPart, Double>() {
+                        @Override
+                        protected void updateItem(Double total, boolean empty) {
+                            super.updateItem(total, empty);
+                            if (empty || total == null) {
+                                setText(null);
+                            } else {
+                                setText("₱" + String.format("%.2f", total));
+                                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-weight: bold;");
+                            }
+                        }
+                    });
                     
-                    partsTable.getColumns().add(nameCol);
-                    partsTable.getColumns().add(qtyCol);
-                    partsTable.getColumns().add(priceCol);
-                    partsTable.getColumns().add(totalCol);
-                    
-                    grid.add(partsTable, 0, row++, 2, 1);
+                    partsTable.getColumns().addAll(nameCol, qtyCol, priceCol, totalCol);
+                    partsSection.getChildren().add(partsTable);
                     
                     // Calculate total parts cost
-                    double totalCost = parts.stream().mapToDouble(BookingPart::getTotalCost).sum();
-                    Label totalLabel = new Label("Total Parts Cost: ₱" + String.format("%.2f", totalCost));
-                    totalLabel.setStyle("-fx-font-weight: bold;");
-                    grid.add(totalLabel, 1, row++);
+                    double totalPartsCost = parts.stream().mapToDouble(BookingPart::getTotalCost).sum();
+                    Label totalPartsLabel = new Label("Total Parts Cost: ₱" + String.format("%.2f", totalPartsCost));
+                    totalPartsLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2E7D32; -fx-padding: 10 0 0 0;");
+                    partsSection.getChildren().add(totalPartsLabel);
+                    
+                    mainContainer.getChildren().add(partsSection);
+                } else {
+                    VBox noPartsSection = new VBox(10);
+                    noPartsSection.setStyle("-fx-background-color: #fafafa; -fx-padding: 15; -fx-background-radius: 5; -fx-border-color: #e0e0e0; -fx-border-width: 1; -fx-border-radius: 5;");
+                    Label noPartsLabel = new Label("ℹ️  No parts or materials used for this service");
+                    noPartsLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #757575;");
+                    noPartsSection.getChildren().add(noPartsLabel);
+                    mainContainer.getChildren().add(noPartsSection);
                 }
             } catch (SQLException e) {
                 e.printStackTrace();
             }
             
+            // === BILLING SECTION (if completed) ===
+            if ("completed".equalsIgnoreCase(booking.getStatus())) {
+                try {
+                    BillingService billingService = BillingService.getInstance();
+                    Bill bill = billingService.getBillByServiceId(booking.getId());
+                    
+                    if (bill != null) {
+                        VBox billingSection = new VBox(10);
+                        billingSection.setStyle("-fx-background-color: #e8f5e9; -fx-padding: 15; -fx-background-radius: 5; -fx-border-color: #4CAF50; -fx-border-width: 2; -fx-border-radius: 5;");
+                        Label billingHeader = new Label("💰 BILLING INFORMATION");
+                        billingHeader.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #2E7D32;");
+                        billingSection.getChildren().add(billingHeader);
+                        
+                        GridPane billingGrid = new GridPane();
+                        billingGrid.setHgap(15);
+                        billingGrid.setVgap(8);
+                        billingGrid.setPadding(new Insets(10, 0, 0, 0));
+                        
+                        row = 0;
+                        addDetailRow(billingGrid, row++, "Bill ID:", bill.getHexId(), true);
+                        addDetailRow(billingGrid, row++, "Bill Date:", bill.getBillDate().toString(), false);
+                        addDetailRow(billingGrid, row++, "Payment Status:", bill.getPaymentStatus().toUpperCase(), false);
+                        addDetailRow(billingGrid, row++, "Total Amount:", "₱" + String.format("%.2f", bill.getAmount()), false);
+                        
+                        billingSection.getChildren().add(billingGrid);
+                        
+                        Label totalAmountLabel = new Label("TOTAL AMOUNT DUE: ₱" + String.format("%.2f", bill.getAmount()));
+                        totalAmountLabel.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #1B5E20; -fx-padding: 10 0 0 0;");
+                        billingSection.getChildren().add(totalAmountLabel);
+                        
+                        mainContainer.getChildren().add(billingSection);
+                    }
+                } catch (SQLException e) {
+                    System.err.println("Could not load billing information: " + e.getMessage());
+                }
+            }
+            
+            scrollPane.setContent(mainContainer);
+            
             // Add close button
             ButtonType closeButton = new ButtonType("Close", ButtonBar.ButtonData.CANCEL_CLOSE);
             dialog.getDialogPane().getButtonTypes().add(closeButton);
             
-            dialog.getDialogPane().setContent(grid);
-            dialog.getDialogPane().setMinWidth(600);
+            dialog.getDialogPane().setContent(scrollPane);
+            dialog.getDialogPane().setMinWidth(750);
+            dialog.getDialogPane().setMinHeight(650);
             dialog.showAndWait();
             
         } catch (Exception e) {
             e.printStackTrace();
             showAlert(Alert.AlertType.ERROR, "Error", "Failed to load booking details: " + e.getMessage());
         }
+    }
+    
+    // Helper method to add detail rows consistently
+    private void addDetailRow(GridPane grid, int row, String label, String value, boolean bold) {
+        Label labelNode = new Label(label);
+        labelNode.setStyle("-fx-font-weight: bold; -fx-min-width: 150px;");
+        
+        Label valueNode = new Label(value != null ? value : "N/A");
+        if (bold) {
+            valueNode.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
+        }
+        
+        grid.add(labelNode, 0, row);
+        grid.add(valueNode, 1, row);
     }
     
     private void editBooking(ServiceBookingViewModel booking) {
@@ -705,27 +942,256 @@ public class ServiceBookingController {
                              "Booking has been cancelled and reserved parts have been released back to inventory.");
                 }
                     
-                // If the status is changed to "completed", create a bill
+                // If the status is changed to "completed", show confirmation
                 if ("completed".equals(dbStatus)) {
-                    BillingService billingService = BillingService.getInstance();
-                    boolean billCreated = billingService.createBillFromService(booking.getId());
-                    
-                    if (billCreated) {
-                        showAlert(Alert.AlertType.INFORMATION, 
-                                 "Bill Created", 
-                                 "A bill has been automatically generated for this service.\n" +
-                                 "You can view and manage it in the Billing section.");
-                    } else {
-                        showAlert(Alert.AlertType.WARNING,
-                                 "Billing Notice",
-                                 "Could not create bill automatically. Please create it manually in the Billing section.");
-                    }
+                    showAlert(Alert.AlertType.INFORMATION, 
+                             "Booking Completed", 
+                             "Service booking has been marked as completed successfully.\n\n" +
+                             "Next Step: Admin or Cashier should press the 'Confirm' button to:\n" +
+                             "  • Generate the bill for this service\n" +
+                             "  • Send email notification to the customer");
                 }
             } catch (SQLException e) {
                 e.printStackTrace();
                 showAlert(Alert.AlertType.ERROR, "Error", "Failed to update status: " + e.getMessage());
             }
         });
+    }
+    
+    /**
+     * Undo a completed or cancelled booking back to scheduled
+     */
+    private void undoBookingStatus(ServiceBookingViewModel booking) {
+        String currentStatus = booking.getStatus();
+        
+        // Only allow undo for completed or cancelled
+        if (!("completed".equals(currentStatus) || "cancelled".equals(currentStatus))) {
+            showAlert(Alert.AlertType.WARNING, "Cannot Undo", 
+                     "Only completed or cancelled bookings can be undone.");
+            return;
+        }
+        
+        try {
+            BillingService billingService = BillingService.getInstance();
+            Bill existingBill = null;
+            
+            // Check if there's a bill for completed bookings
+            if ("completed".equals(currentStatus)) {
+                existingBill = billingService.getBillByServiceId(booking.getId());
+                if (existingBill != null && "Paid".equalsIgnoreCase(existingBill.getPaymentStatus())) {
+                    showAlert(Alert.AlertType.ERROR, "Cannot Undo", 
+                             "Cannot undo this booking because the bill has already been paid.\n\n" +
+                             "Bill ID: " + existingBill.getHexId() + "\n" +
+                             "Amount: ₱" + String.format("%.2f", existingBill.getAmount()));
+                    return;
+                }
+            }
+            
+            // Confirmation dialog
+            Alert confirmAlert = new Alert(Alert.AlertType.CONFIRMATION);
+            confirmAlert.setTitle("Undo Status Change");
+            confirmAlert.setHeaderText("Undo " + currentStatus + " status for booking " + booking.getHexId() + "?");
+            String warningMessage = "This will revert the booking back to its original status.\n\n";
+            if ("completed".equals(currentStatus) && existingBill != null && "Unpaid".equalsIgnoreCase(existingBill.getPaymentStatus())) {
+                warningMessage += "⚠ The unpaid bill will be automatically deleted.";
+            } else if ("cancelled".equals(currentStatus)) {
+                warningMessage += "The parts will be re-reserved for this booking.";
+            }
+            confirmAlert.setContentText(warningMessage);
+            
+            var result = confirmAlert.showAndWait();
+            if (result.isEmpty() || result.get() != ButtonType.OK) {
+                return;
+            }
+            
+            // If it was cancelled, we need to re-reserve the parts
+            if ("cancelled".equals(currentStatus)) {
+                // Get the booking parts
+                List<BookingPart> parts = bookingService.getBookingParts(booking.getId());
+                if (!parts.isEmpty()) {
+                    // Re-reserve the parts
+                    InventoryService inventoryService = InventoryService.getInstance();
+                    for (BookingPart part : parts) {
+                        inventoryService.reserveParts(part.getPartId(), part.getQuantity());
+                    }
+                    System.out.println("Re-reserved " + parts.size() + " parts for undone booking");
+                }
+            }
+            
+            // If it was completed, we need to add the parts back to inventory
+            if ("completed".equals(currentStatus)) {
+                // Get the booking parts that were deducted
+                List<BookingPart> parts = bookingService.getBookingParts(booking.getId());
+                if (!parts.isEmpty()) {
+                    for (BookingPart part : parts) {
+                        // Add back to quantity_in_stock and reserve it
+                        try (Connection conn = DatabaseUtil.getConnection();
+                             PreparedStatement stmt = conn.prepareStatement(
+                                 "UPDATE parts SET quantity_in_stock = quantity_in_stock + ?, " +
+                                 "reserved_quantity = reserved_quantity + ? WHERE id = ?")) {
+                            stmt.setInt(1, part.getQuantity());
+                            stmt.setInt(2, part.getQuantity());
+                            stmt.setInt(3, part.getPartId());
+                            stmt.executeUpdate();
+                        } catch (SQLException ex) {
+                            ex.printStackTrace();
+                            showAlert(Alert.AlertType.ERROR, "Database Error", 
+                                     "Failed to restore inventory for part: " + part.getPartId());
+                            return;
+                        }
+                    }
+                    System.out.println("Restored and re-reserved " + parts.size() + " parts for undone completed booking");
+                }
+            }
+            
+            // Delete unpaid bill if it exists for completed booking
+            if ("completed".equals(currentStatus) && existingBill != null && "Unpaid".equalsIgnoreCase(existingBill.getPaymentStatus())) {
+                boolean billDeleted = billingService.deleteBill(existingBill.getId());
+                if (billDeleted) {
+                    System.out.println("Deleted unpaid bill " + existingBill.getHexId() + " for undone completed booking");
+                } else {
+                    System.err.println("Warning: Failed to delete unpaid bill " + existingBill.getHexId());
+                }
+            }
+            
+            // Undo status change to restore original status (e.g., delayed -> scheduled/delayed)
+            boolean success = bookingService.undoBookingStatusChange(booking.getId());
+            if (success) {
+                // Reload the booking to get the updated status
+                ServiceBookingViewModel updatedBooking = bookingService.getBookingById(booking.getId());
+                if (updatedBooking != null) {
+                    booking.setStatus(updatedBooking.getStatus());
+                    bookingTable.refresh();
+                    statusLabel.setText("Booking status reverted to: " + updatedBooking.getStatus());
+                } else {
+                    booking.setStatus("scheduled");
+                    bookingTable.refresh();
+                    statusLabel.setText("Booking status reverted");
+                }
+                loadBookings(); // Refresh active bookings table
+                loadCancelledBookings(); // Refresh cancelled bookings table to remove undone booking
+                showAlert(Alert.AlertType.INFORMATION, "Status Reverted", 
+                         "Booking " + booking.getHexId() + " has been reverted to 'Scheduled' status.");
+            } else {
+                showAlert(Alert.AlertType.ERROR, "Undo Failed", "Failed to revert booking status");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Error", "Failed to undo status: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Confirm completed booking, create bill, and email customer
+     * Only accessible by Admin or Cashier
+     */
+    private void confirmAndCreateBill(ServiceBookingViewModel booking) {
+        // Verify user role
+        User currentUser = UserService.getInstance().getCurrentUser();
+        if (currentUser == null || 
+            (currentUser.getRole() != User.UserRole.ADMIN && currentUser.getRole() != User.UserRole.CASHIER)) {
+            showAlert(Alert.AlertType.ERROR, "Access Denied", 
+                     "Only Admin or Cashier can confirm bookings and create bills.");
+            return;
+        }
+        
+        // Verify booking is completed
+        if (!"completed".equals(booking.getStatus())) {
+            showAlert(Alert.AlertType.WARNING, "Invalid Status", 
+                     "Only completed bookings can be confirmed.");
+            return;
+        }
+        
+        try {
+            BillingService billingService = BillingService.getInstance();
+            
+            // Check if bill already exists
+            Bill existingBill = billingService.getBillByServiceId(booking.getId());
+            if (existingBill != null) {
+                showAlert(Alert.AlertType.WARNING, "Bill Already Exists", 
+                         "A bill has already been created for this booking.\\n\\n" +
+                         "Bill ID: " + existingBill.getHexId() + "\\n" +
+                         "Amount: ₱" + String.format("%.2f", existingBill.getAmount()));
+                return;
+            }
+            
+            // Confirmation dialog
+            Alert confirmAlert = new Alert(Alert.AlertType.CONFIRMATION);
+            confirmAlert.setTitle("Confirm Booking");
+            confirmAlert.setHeaderText("Create bill for booking " + booking.getHexId() + "?");
+            confirmAlert.setContentText("This will:\\n" +
+                                       "• Generate a bill for the customer\\n" +
+                                       "• Send an email notification to the customer\\n\\n" +
+                                       "Customer: " + booking.getCustomer().getName() + "\\n" +
+                                       "Service: " + booking.getServiceType());
+            
+            var result = confirmAlert.showAndWait();
+            if (result.isEmpty() || result.get() != ButtonType.OK) {
+                return;
+            }
+            
+            // Create the bill
+            boolean billCreated = billingService.createBillFromService(booking.getId());
+            
+            if (billCreated) {
+                // Get the created bill details
+                Bill newBill = billingService.getBillByServiceId(booking.getId());
+                
+                // Send email notification to customer
+                try {
+                    CustomerService customerService = CustomerService.getInstance();
+                    Customer customer = customerService.getCustomerById(booking.getCustomer().getId());
+                    
+                    if (customer != null && customer.getEmail() != null && !customer.getEmail().trim().isEmpty()) {
+                        boolean emailSent = EmailService.getInstance().sendBillNotification(
+                            customer, booking, newBill);
+                        
+                        if (emailSent) {
+                            showAlert(Alert.AlertType.INFORMATION, 
+                                     "Bill Created Successfully", 
+                                     "Bill has been generated and customer has been notified via email.\\n\\n" +
+                                     "Bill ID: " + newBill.getHexId() + "\\n" +
+                                     "Amount: ₱" + String.format("%.2f", newBill.getAmount()) + "\\n" +
+                                     "Email sent to: " + customer.getEmail());
+                        } else {
+                            showAlert(Alert.AlertType.WARNING, 
+                                     "Bill Created (Email Failed)", 
+                                     "Bill has been generated but email notification failed.\\n\\n" +
+                                     "Bill ID: " + newBill.getHexId() + "\\n" +
+                                     "Amount: ₱" + String.format("%.2f", newBill.getAmount()) + "\\n\\n" +
+                                     "Please notify customer manually.");
+                        }
+                    } else {
+                        showAlert(Alert.AlertType.WARNING, 
+                                 "Bill Created (No Email)", 
+                                 "Bill has been generated but customer has no email address.\\n\\n" +
+                                 "Bill ID: " + newBill.getHexId() + "\\n" +
+                                 "Amount: ₱" + String.format("%.2f", newBill.getAmount()) + "\\n\\n" +
+                                 "Please notify customer manually.");
+                    }
+                } catch (Exception emailEx) {
+                    emailEx.printStackTrace();
+                    showAlert(Alert.AlertType.WARNING, 
+                             "Bill Created (Email Error)", 
+                             "Bill has been generated but email notification encountered an error.\\n\\n" +
+                             "Bill ID: " + newBill.getHexId() + "\\n" +
+                             "Amount: ₱" + String.format("%.2f", newBill.getAmount()));
+                }
+                
+                // Refresh the table to update button visibility
+                bookingTable.refresh();
+                loadBookings();
+                
+            } else {
+                showAlert(Alert.AlertType.ERROR, "Bill Creation Failed", 
+                         "Failed to create bill for this booking. Please try again.");
+            }
+            
+        } catch (SQLException e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Database Error", 
+                     "Failed to create bill: " + e.getMessage());
+        }
     }
     
     private void setupCustomerSelection(GridPane grid, int row) {
@@ -897,15 +1363,71 @@ public class ServiceBookingController {
     }
     
     private void setupServiceTypeAndDescription(GridPane grid, int row) {
-        Label typeLabel = new Label("Service Type:");
-        typeLabel.getStyleClass().add("form-label");
-        Label descLabel = new Label("Description:");
-        descLabel.getStyleClass().add("form-label");
+        Label sectionLabel = new Label("Services Required");
+        sectionLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
+        grid.add(sectionLabel, 0, row, 3, 1);
         
-        serviceTypeComboBox = new ComboBox<>();
-        serviceTypeComboBox.setMaxWidth(Double.MAX_VALUE);
-        serviceTypeComboBox.setPromptText("Select service type");
-        serviceTypeComboBox.getItems().addAll(
+        // Initialize services list
+        servicesList = FXCollections.observableArrayList();
+        
+        // Services ListView
+        servicesListView = new ListView<>();
+        servicesListView.setPrefHeight(120);
+        servicesListView.setMinHeight(100);
+        servicesListView.setMaxHeight(150);
+        
+        // Create an ObservableList for display with formatted service info
+        ObservableList<String> servicesDisplay = FXCollections.observableArrayList();
+        servicesListView.setItems(servicesDisplay);
+        
+        // Add buttons HBox
+        HBox serviceButtonsBox = new HBox(10);
+        serviceButtonsBox.setAlignment(Pos.CENTER_LEFT);
+        
+        addServiceButton = new Button("+ Add Service");
+        addServiceButton.setStyle("-fx-padding: 8px 15px; -fx-font-size: 11px;");
+        addServiceButton.setOnAction(event -> showAddServiceDialog(servicesDisplay));
+        
+        removeServiceButton = new Button("- Remove Service");
+        removeServiceButton.setStyle("-fx-padding: 8px 15px; -fx-font-size: 11px;");
+        removeServiceButton.setDisable(true);
+        removeServiceButton.setOnAction(event -> {
+            int selectedIndex = servicesListView.getSelectionModel().getSelectedIndex();
+            if (selectedIndex >= 0) {
+                servicesList.remove(selectedIndex);
+                servicesDisplay.remove(selectedIndex);
+                if (servicesList.isEmpty()) {
+                    removeServiceButton.setDisable(true);
+                }
+            }
+        });
+        
+        servicesListView.setOnMouseClicked(event -> {
+            removeServiceButton.setDisable(servicesListView.getSelectionModel().getSelectedIndex() < 0);
+        });
+        
+        serviceButtonsBox.getChildren().addAll(addServiceButton, removeServiceButton);
+        
+        grid.add(servicesListView, 0, row + 1, 3, 1);
+        grid.add(serviceButtonsBox, 0, row + 2, 3, 1);
+    }
+    
+    private void showAddServiceDialog(ObservableList<String> servicesDisplay) {
+        Dialog dialog = new Dialog();
+        dialog.setTitle("Add Service");
+        dialog.setHeaderText("Select and describe the service");
+        
+        ButtonType addButtonType = new ButtonType("Add", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(addButtonType, ButtonType.CANCEL);
+        
+        GridPane dialogGrid = new GridPane();
+        dialogGrid.setHgap(10);
+        dialogGrid.setVgap(10);
+        dialogGrid.setPadding(new Insets(20));
+        
+        ComboBox<String> serviceTypeCombo = new ComboBox<>();
+        serviceTypeCombo.setPromptText("Select service type");
+        serviceTypeCombo.getItems().addAll(
             "Regular Maintenance", 
             "Oil Change", 
             "Tire Service", 
@@ -917,18 +1439,44 @@ public class ServiceBookingController {
             "Other"
         );
         
-        serviceDescriptionArea = new TextArea();
-        serviceDescriptionArea.setPrefRowCount(4); // Increased row count
-        serviceDescriptionArea.setPrefWidth(400); // Set preferred width
-        serviceDescriptionArea.setMinWidth(300); // Set minimum width
-        serviceDescriptionArea.setMaxWidth(Double.MAX_VALUE); // Allow growing
-        serviceDescriptionArea.setWrapText(true);
-        serviceDescriptionArea.setPromptText("Enter service details");
+        TextArea descriptionArea = new TextArea();
+        descriptionArea.setPrefRowCount(4);
+        descriptionArea.setPromptText("Enter service details");
+        descriptionArea.setWrapText(true);
         
-        grid.add(typeLabel, 0, row);
-        grid.add(serviceTypeComboBox, 1, row, 2, 1);
-        grid.add(descLabel, 0, row + 1);
-        grid.add(serviceDescriptionArea, 1, row + 1, 2, 1);
+        Label typeLabel = new Label("Service Type:");
+        Label descLabel = new Label("Description:");
+        
+        dialogGrid.add(typeLabel, 0, 0);
+        dialogGrid.add(serviceTypeCombo, 1, 0);
+        dialogGrid.add(descLabel, 0, 1);
+        dialogGrid.add(descriptionArea, 1, 1);
+        
+        dialog.getDialogPane().setContent(dialogGrid);
+        
+        Button addBtn = (Button) dialog.getDialogPane().lookupButton(addButtonType);
+        addBtn.setDisable(true);
+        
+        serviceTypeCombo.valueProperty().addListener((obs, oldVal, newVal) -> {
+            addBtn.setDisable(newVal == null || newVal.trim().isEmpty());
+        });
+        
+        Optional result = dialog.showAndWait();
+        if (result.isPresent() && result.get() == addButtonType) {
+            String type = serviceTypeCombo.getValue();
+            String desc = descriptionArea.getText().trim();
+            
+            if (type != null && !type.isEmpty()) {
+                Map<String, String> service = new HashMap<>();
+                service.put("type", type);
+                service.put("description", desc);
+                servicesList.add(service);
+                
+                String displayText = type + (desc.isEmpty() ? "" : " - " + desc);
+                servicesDisplay.add(displayText);
+                removeServiceButton.setDisable(false);
+            }
+        }
     }
     
     private void setupPartsSelection(GridPane grid, int row) {
@@ -1305,9 +1853,27 @@ public class ServiceBookingController {
         bookingDatePicker.setValue(booking.getDate());
         timeComboBox.setValue(booking.getTime());
         
-        // Service details
-        serviceTypeComboBox.setValue(booking.getServiceType());
-        serviceDescriptionArea.setText(booking.getServiceDescription());
+        // Load services for this booking
+        try {
+            List<Map<String, String>> existingServices = bookingService.getBookingServices(booking.getId());
+            servicesList.clear();
+            servicesList.addAll(existingServices);
+            
+            // Update the display list
+            ObservableList<String> servicesDisplay = servicesListView.getItems();
+            servicesDisplay.clear();
+            for (Map<String, String> service : existingServices) {
+                String type = service.get("type");
+                String desc = service.get("description");
+                String displayText = type + (desc == null || desc.isEmpty() ? "" : " - " + desc);
+                servicesDisplay.add(displayText);
+            }
+            
+            removeServiceButton.setDisable(existingServices.isEmpty());
+        } catch (SQLException e) {
+            showAlert(Alert.AlertType.ERROR, "Error", 
+                     "Could not load booking services: " + e.getMessage());
+        }
         
         // Load existing parts for this booking
         try {
@@ -1344,10 +1910,11 @@ public class ServiceBookingController {
                 showAlert(Alert.AlertType.WARNING, "Validation Error", "Please select a time");
                 return false;
             }
-            if (serviceTypeComboBox.getValue() == null || serviceTypeComboBox.getValue().trim().isEmpty()) {
-                showAlert(Alert.AlertType.WARNING, "Validation Error", "Please select a service type");
+            if (servicesList.isEmpty()) {
+                showAlert(Alert.AlertType.WARNING, "Validation Error", "Please add at least one service");
                 return false;
             }
+
 
             System.out.println("All validations passed...");
 
@@ -1357,15 +1924,19 @@ public class ServiceBookingController {
             int mechanicId = mechanicComboBox.getValue().getId();
             LocalDate bookingDate = bookingDatePicker.getValue();
             String bookingTime = timeComboBox.getValue();
-            String serviceType = serviceTypeComboBox.getValue();
-            String serviceDescription = serviceDescriptionArea.getText();
+            
+            // Get first service as primary (for backward compatibility with updateBooking)
+            Map<String, String> primaryService = servicesList.get(0);
+            String serviceType = primaryService.get("type");
+            String serviceDescription = primaryService.get("description");
+            
             System.out.println("Collected form values:");
             System.out.println("Customer ID: " + customerId);
             System.out.println("Vehicle ID: " + vehicleId);
             System.out.println("Mechanic ID: " + mechanicId);
             System.out.println("Date: " + bookingDate);
             System.out.println("Time: " + bookingTime);
-            System.out.println("Service Type: " + serviceType);
+            System.out.println("Services Count: " + servicesList.size());
 
             try {
                 // Prepare parts list (even if empty)
@@ -1379,12 +1950,13 @@ public class ServiceBookingController {
                     bookingId = currentEditingBooking.getId();
                     System.out.println("Editing existing booking ID: " + bookingId);
                     
-                    // First, release old parts reservations
+                    // First, release old parts and services
                     try {
                         bookingService.releaseBookingParts(bookingId);
                         bookingService.deleteBookingParts(bookingId);
+                        bookingService.deleteBookingServices(bookingId);  // Delete old services
                     } catch (SQLException e) {
-                        System.err.println("Could not release old parts: " + e.getMessage());
+                        System.err.println("Could not release old parts/services: " + e.getMessage());
                     }
                     
                     // Check if parts are available and if mechanic is off duty
@@ -1507,6 +2079,26 @@ public class ServiceBookingController {
                         }
                     } else {
                         System.out.println("No parts selected for this booking.");
+                    }
+                    
+                    // Save all services to booking_services table
+                    if (isEdit) {
+                        // For edit mode, services are already replaced with new ones
+                        // The list was cleared and repopulated in setupServiceTypeAndDescription
+                    }
+                    
+                    // Add all services for this booking
+                    if (servicesList != null && !servicesList.isEmpty()) {
+                        System.out.println("Saving " + servicesList.size() + " services...");
+                        for (Map<String, String> service : servicesList) {
+                            String sType = service.get("type");
+                            String sDesc = service.get("description");
+                            try {
+                                bookingService.addServiceToBooking(bookingId, sType, sDesc);
+                            } catch (Exception e) {
+                                System.err.println("Warning: Could not save service: " + sType + " - " + e.getMessage());
+                            }
+                        }
                     }
                     
                     // Check booking status to show appropriate message
@@ -1637,10 +2229,10 @@ public class ServiceBookingController {
      * @return true if verification passed, false otherwise
      */
     private boolean showCaptchaVerification(String action, String bookingHexId) {
-        // Generate random math problem
+        // Generate easy math problem (single digits only)
         java.util.Random random = new java.util.Random();
-        int num1 = random.nextInt(20) + 1; // 1-20
-        int num2 = random.nextInt(20) + 1; // 1-20
+        int num1 = random.nextInt(9) + 1; // 1-9
+        int num2 = random.nextInt(9) + 1; // 1-9
         int correctAnswer = num1 + num2;
         
         // First confirmation dialog

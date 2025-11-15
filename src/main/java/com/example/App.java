@@ -25,6 +25,10 @@ public class App extends Application {
         // Start stock monitoring service
         StockMonitorService.getInstance().startMonitoring();
         System.out.println("Stock monitoring service started.");
+        
+        // Check stock and expiration immediately on startup
+        System.out.println("Performing initial stock and expiration check...");
+        InventoryService.getInstance().checkAndSendLowStockAlert();
     }
 
     public static void setRoot(String fxml) throws IOException {

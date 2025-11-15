@@ -299,8 +299,8 @@ public class InventoryController {
     
     private void showInventoryItemDialog(InventoryItem item) {
         Dialog<InventoryItem> dialog = new Dialog<>();
-        dialog.setTitle(item == null ? "Add New Inventory Item" : "Edit Inventory Item");
-        dialog.setHeaderText(item == null ? "Enter item details" : "Edit part: " + item.getHexId());
+        dialog.setTitle(item == null ? "Add New Inventory Item" : "Edit Inventory Item - " + item.getHexId());
+        dialog.setHeaderText(item == null ? "Enter item details" : "Part ID: " + item.getHexId());
         
         // Set button types
         ButtonType saveButtonType = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE);
@@ -318,14 +318,11 @@ public class InventoryController {
         partNumberField.setEditable(false); // Make it read-only
         partNumberField.setStyle("-fx-background-color: #f0f0f0;"); // Gray background to show it's read-only
         
-        // Auto-generate part number for new items
+        // Show hex_id for new and existing items
         if (item == null) {
-            try {
-                String nextPartNumber = inventoryService.generateNextPartNumber();
-                partNumberField.setText(nextPartNumber);
-            } catch (SQLException e) {
-                partNumberField.setText("PART-0001");
-            }
+            partNumberField.setText("Will be auto-generated");
+        } else {
+            partNumberField.setText(item.getHexId());
         }
         
         TextField nameField = new TextField();
@@ -388,8 +385,30 @@ public class InventoryController {
             }
         });
         
-        TextField locationField = new TextField();
-        locationField.setPromptText("Storage Location");
+        ComboBox<String> locationComboBox = new ComboBox<>();
+        locationComboBox.setPromptText("Select Location");
+        locationComboBox.setEditable(false);
+        locationComboBox.getItems().addAll(
+            "Bodega", "Warehouse 1", "Warehouse 2", "Warehouse 3", 
+            "Storage Room A", "Storage Room B", "Workshop", "Other"
+        );
+        
+        TextField customLocationField = new TextField();
+        customLocationField.setPromptText("Enter location");
+        customLocationField.setVisible(false);
+        customLocationField.setManaged(false);
+        
+        locationComboBox.valueProperty().addListener((observable, oldValue, newValue) -> {
+            if ("Other".equals(newValue)) {
+                customLocationField.setVisible(true);
+                customLocationField.setManaged(true);
+                customLocationField.requestFocus();
+            } else {
+                customLocationField.setVisible(false);
+                customLocationField.setManaged(false);
+                customLocationField.clear();
+            }
+        });
         
         Spinner<Integer> minStockSpinner = new Spinner<>(0, 1000, 0, 1);
         minStockSpinner.setEditable(true);
@@ -423,7 +442,20 @@ public class InventoryController {
             quantitySpinner.getValueFactory().setValue(item.getQuantity());
             costPriceField.setText(String.valueOf(item.getCostPrice()));
             sellingPriceField.setText(String.valueOf(item.getSellingPrice()));
-            locationField.setText(item.getLocation());
+            
+            // Set location dropdown value
+            String existingLocation = item.getLocation();
+            if (locationComboBox.getItems().contains(existingLocation) && !"Other".equals(existingLocation)) {
+                locationComboBox.setValue(existingLocation);
+            } else if (!existingLocation.isEmpty() && !"Other".equals(existingLocation)) {
+                locationComboBox.setValue("Other");
+                customLocationField.setText(existingLocation);
+                customLocationField.setVisible(true);
+                customLocationField.setManaged(true);
+            } else {
+                locationComboBox.setValue(existingLocation);
+            }
+            
             minStockSpinner.getValueFactory().setValue(item.getMinimumStock());
         }
         
@@ -473,7 +505,8 @@ public class InventoryController {
         grid.add(sellingPriceField, 1, row++);
         
         grid.add(new Label("Location:"), 0, row);
-        grid.add(locationField, 1, row++);
+        grid.add(locationComboBox, 1, row++);
+        grid.add(customLocationField, 1, row++);
         
         grid.add(new Label("Minimum Stock:"), 0, row);
         grid.add(minStockSpinner, 1, row++);
@@ -546,7 +579,26 @@ public class InventoryController {
                         }
                     }
                     
-                    String location = locationField.getText().trim();
+                    // Validate selling price is not lower than cost price
+                    if (sellingPrice > 0 && costPrice > 0 && sellingPrice < costPrice) {
+                        showAlert(Alert.AlertType.ERROR, "Invalid Price", 
+                                 "Selling price (₱" + String.format("%.2f", sellingPrice) + 
+                                 ") cannot be lower than cost price (₱" + String.format("%.2f", costPrice) + ")");
+                        return null;
+                    }
+                    
+                    // Get location from dropdown or custom field
+                    String selectedLocation = locationComboBox.getValue() != null ? locationComboBox.getValue() : "";
+                    String location;
+                    if ("Other".equals(selectedLocation)) {
+                        location = customLocationField.getText().trim();
+                        if (location.isEmpty()) {
+                            showAlert(Alert.AlertType.ERROR, "Error", "Please specify the location");
+                            return null;
+                        }
+                    } else {
+                        location = selectedLocation;
+                    }
                     int minimumStock = minStockSpinner.getValue();
                     java.time.LocalDate expirationDate = expirationDatePicker.getValue();
                     
@@ -569,6 +621,14 @@ public class InventoryController {
                             }
                         }
                         if (success) {
+                            // Check if new item is at or below minimum stock and send email
+                            if (quantity <= minimumStock) {
+                                try {
+                                    inventoryService.checkAndSendLowStockAlert();
+                                } catch (Exception e) {
+                                    System.err.println("Failed to send low stock alert: " + e.getMessage());
+                                }
+                            }
                             loadInventoryData();
                             statusLabel.setText("Item added successfully");
                         }

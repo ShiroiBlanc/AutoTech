@@ -59,12 +59,15 @@ public class CustomerService {
             
             while (rs.next()) {
                 int id = rs.getInt("id");
+                String hexId = rs.getString("hex_id");
                 String name = rs.getString("name");
                 String phone = rs.getString("phone");
                 String email = rs.getString("email");
                 String address = rs.getString("address");
                 
-                customers.add(new Customer(id, name, phone, email, address));
+                Customer customer = new Customer(id, name, phone, email, address);
+                customer.setHexId(hexId);
+                customers.add(customer);
             }
         }
         
@@ -119,5 +122,26 @@ public class CustomerService {
             int rowsAffected = stmt.executeUpdate();
             return rowsAffected > 0;
         }
+    }
+    
+    public Customer getCustomerById(int customerId) throws SQLException {
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement("SELECT * FROM customers WHERE id = ?")) {
+            
+            stmt.setInt(1, customerId);
+            ResultSet rs = stmt.executeQuery();
+            
+            if (rs.next()) {
+                int id = rs.getInt("id");
+                String hexId = rs.getString("hex_id");
+                String name = rs.getString("name");
+                String phone = rs.getString("phone");
+                String email = rs.getString("email");
+                String address = rs.getString("address");
+                
+                return new Customer(id, hexId, name, phone, email, address);
+            }
+        }
+        return null;
     }
 }

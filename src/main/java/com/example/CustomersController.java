@@ -201,8 +201,8 @@ public class CustomersController {
     
     private void showCustomerDialog(Customer customer) {
         Dialog<Customer> dialog = new Dialog<>();
-        dialog.setTitle(customer == null ? "Add New Customer" : "Edit Customer");
-        dialog.setHeaderText(customer == null ? "Enter customer details" : "Edit customer: " + customer.getHexId());
+        dialog.setTitle(customer == null ? "Add New Customer" : "Edit Customer - " + customer.getHexId());
+        dialog.setHeaderText(customer == null ? "Enter customer details" : "Customer ID: " + customer.getHexId());
         
         // Set button types
         ButtonType saveButtonType = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE);
@@ -212,7 +212,7 @@ public class CustomersController {
         GridPane grid = new GridPane();
         grid.setHgap(10);
         grid.setVgap(10);
-        grid.setPadding(new Insets(20, 150, 10, 10));
+        grid.setPadding(new Insets(20, 250, 10, 10)); // Increased from 150 to 250 for vehicle buttons
         
         TextField nameField = new TextField();
         nameField.setPromptText("Name");

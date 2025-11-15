@@ -7,13 +7,16 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.print.PrinterJob;
 
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class BillingController {
     @FXML private TableView<Bill> billTable;
@@ -89,6 +92,7 @@ public class BillingController {
         // Set items to table
         billTable.setItems(billList);
     }
+
     
     private void loadBills() {
         try {
@@ -147,135 +151,365 @@ public class BillingController {
     
     private void showBookingDetails(Bill bill) {
         try {
-            // Fetch booking details from service_bookings using the service_id
+            // Fetch booking details using the service_id
             ServiceBookingService bookingService = new ServiceBookingService();
-            ServiceBookingViewModel booking = bookingService.getAllBookings().stream()
-                .filter(b -> b.getId() == bill.getServiceId())
-                .findFirst()
-                .orElse(null);
+            ServiceBookingViewModel booking = bookingService.getBookingById(bill.getServiceId());
             
             if (booking == null) {
                 showAlert(Alert.AlertType.ERROR, "Error", "Booking details not found for this bill.");
                 return;
             }
             
-            // Create dialog
             Dialog<Void> dialog = new Dialog<>();
-            dialog.setTitle("Booking Details");
-            dialog.setHeaderText("Details for Bill " + bill.getHexId());
+            dialog.setTitle("Bill Details");
+            dialog.setHeaderText("Bill Details - " + bill.getHexId());
             
-            // Create content
-            GridPane grid = new GridPane();
-            grid.setHgap(10);
-            grid.setVgap(15);
-            grid.setPadding(new Insets(20));
-            grid.setStyle("-fx-background-color: white;");
+            // Create scrollable content
+            ScrollPane scrollPane = new ScrollPane();
+            scrollPane.setFitToWidth(true);
+            scrollPane.setPrefHeight(600);
+            
+            VBox mainContainer = new VBox(15);
+            mainContainer.setPadding(new Insets(20));
+            mainContainer.setStyle("-fx-background-color: white;");
+            
+            // === BILL INFORMATION SECTION ===
+            VBox billSection = new VBox(10);
+            billSection.setStyle("-fx-background-color: #f5f5f5; -fx-padding: 15; -fx-background-radius: 5;");
+            Label billHeader = new Label("💰 BILL INFORMATION");
+            billHeader.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #1976D2;");
+            billSection.getChildren().add(billHeader);
+            
+            GridPane billGrid = new GridPane();
+            billGrid.setHgap(15);
+            billGrid.setVgap(8);
+            billGrid.setPadding(new Insets(10, 0, 0, 0));
             
             int row = 0;
+            addDetailRow(billGrid, row++, "Bill ID:", bill.getHexId(), true);
+            addDetailRow(billGrid, row++, "Bill Date:", bill.getBillDate().toString(), false);
+            addDetailRow(billGrid, row++, "Payment Status:", bill.getPaymentStatus().toUpperCase(), false);
             
-            // Bill Information
-            Label billHeaderLabel = new Label("Bill Information:");
-            billHeaderLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-underline: true;");
-            grid.add(billHeaderLabel, 0, row++, 2, 1);
+            billSection.getChildren().add(billGrid);
+            mainContainer.getChildren().add(billSection);
             
-            grid.add(new Label("Bill ID:"), 0, row);
-            Label billIdLabel = new Label(bill.getHexId());
-            billIdLabel.setStyle("-fx-font-weight: bold;");
-            grid.add(billIdLabel, 1, row++);
+            // === CUSTOMER & VEHICLE SECTION ===
+            VBox customerSection = new VBox(10);
+            customerSection.setStyle("-fx-background-color: #e3f2fd; -fx-padding: 15; -fx-background-radius: 5;");
+            Label customerHeader = new Label("👤 CUSTOMER & VEHICLE");
+            customerHeader.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #0288D1;");
+            customerSection.getChildren().add(customerHeader);
             
-            grid.add(new Label("Amount:"), 0, row);
-            Label amountLabel = new Label(String.format("₱%.2f", bill.getAmount()));
-            amountLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #0066cc; -fx-font-size: 14px;");
-            grid.add(amountLabel, 1, row++);
+            GridPane customerGrid = new GridPane();
+            customerGrid.setHgap(15);
+            customerGrid.setVgap(8);
+            customerGrid.setPadding(new Insets(10, 0, 0, 0));
             
-            grid.add(new Label("Payment Status:"), 0, row);
-            Label statusLabel = new Label(bill.getPaymentStatus());
-            statusLabel.setStyle("-fx-font-weight: bold;");
-            if ("Paid".equals(bill.getPaymentStatus())) {
-                statusLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: green;");
-            } else if ("Unpaid".equals(bill.getPaymentStatus())) {
-                statusLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: red;");
+            row = 0;
+            addDetailRow(customerGrid, row++, "Customer Name:", booking.getCustomer().getName(), false);
+            
+            // Get full customer details
+            try {
+                Customer fullCustomer = CustomerService.getInstance().getCustomerById(booking.getCustomer().getId());
+                if (fullCustomer != null) {
+                    if (fullCustomer.getPhone() != null && !fullCustomer.getPhone().isEmpty()) {
+                        addDetailRow(customerGrid, row++, "Phone:", fullCustomer.getPhone(), false);
+                    }
+                    if (fullCustomer.getEmail() != null && !fullCustomer.getEmail().isEmpty()) {
+                        addDetailRow(customerGrid, row++, "Email:", fullCustomer.getEmail(), false);
+                    }
+                    if (fullCustomer.getAddress() != null && !fullCustomer.getAddress().isEmpty()) {
+                        addDetailRow(customerGrid, row++, "Address:", fullCustomer.getAddress(), false);
+                    }
+                }
+            } catch (SQLException e) {
+                System.err.println("Could not load customer details: " + e.getMessage());
             }
-            grid.add(statusLabel, 1, row++);
             
-            grid.add(new Label("Bill Date:"), 0, row);
-            grid.add(new Label(bill.getBillDate().toString()), 1, row++);
+            addDetailRow(customerGrid, row++, "Vehicle:", booking.getVehicle().getModel(), false);
             
-            // Booking Information
-            row++;
-            Label bookingHeaderLabel = new Label("Booking Information:");
-            bookingHeaderLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-underline: true;");
-            grid.add(bookingHeaderLabel, 0, row++, 2, 1);
+            customerSection.getChildren().add(customerGrid);
+            mainContainer.getChildren().add(customerSection);
             
-            grid.add(new Label("Booking ID:"), 0, row);
-            grid.add(new Label(String.valueOf(booking.getId())), 1, row++);
+            // === SERVICE SECTION ===
+            VBox serviceSection = new VBox(10);
+            serviceSection.setStyle("-fx-background-color: #fff3e0; -fx-padding: 15; -fx-background-radius: 5;");
+            Label serviceHeader = new Label("🔧 SERVICE DETAILS");
+            serviceHeader.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #E65100;");
+            serviceSection.getChildren().add(serviceHeader);
             
-            grid.add(new Label("Customer:"), 0, row);
-            Label customerLabel = new Label(booking.getCustomer().getName());
-            customerLabel.setStyle("-fx-font-weight: bold;");
-            grid.add(customerLabel, 1, row++);
+            GridPane serviceGrid = new GridPane();
+            serviceGrid.setHgap(15);
+            serviceGrid.setVgap(8);
+            serviceGrid.setPadding(new Insets(10, 0, 0, 0));
             
-            grid.add(new Label("Vehicle:"), 0, row);
-            grid.add(new Label(booking.getVehicle().getBrand()), 1, row++);
+            row = 0;
+            addDetailRow(serviceGrid, row++, "Service Type:", booking.getServiceType(), false);
+            addDetailRow(serviceGrid, row++, "Mechanic:", booking.getMechanic().getName(), false);
+            addDetailRow(serviceGrid, row++, "Booking Date:", booking.getDate().toString(), false);
+            addDetailRow(serviceGrid, row++, "Booking Time:", booking.getTime(), false);
+            addDetailRow(serviceGrid, row++, "Status:", booking.getStatus().toUpperCase(), false);
             
-            grid.add(new Label("Mechanic:"), 0, row);
-            grid.add(new Label(booking.getMechanic().getName()), 1, row++);
+            serviceSection.getChildren().add(serviceGrid);
+            mainContainer.getChildren().add(serviceSection);
             
-            grid.add(new Label("Service Type:"), 0, row);
-            Label serviceTypeLabel = new Label(booking.getServiceType());
-            serviceTypeLabel.setStyle("-fx-font-weight: bold;");
-            grid.add(serviceTypeLabel, 1, row++);
+            // === SERVICE DESCRIPTION SECTION ===
+            if (booking.getServiceDescription() != null && !booking.getServiceDescription().trim().isEmpty()) {
+                VBox descSection = new VBox(10);
+                descSection.setStyle("-fx-background-color: #f3e5f5; -fx-padding: 15; -fx-background-radius: 5;");
+                Label descHeader = new Label("📝 SERVICE DESCRIPTION");
+                descHeader.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #6A1B9A;");
+                descSection.getChildren().add(descHeader);
+                
+                TextArea descArea = new TextArea(booking.getServiceDescription());
+                descArea.setEditable(false);
+                descArea.setWrapText(true);
+                descArea.setPrefRowCount(4);
+                descArea.setStyle("-fx-control-inner-background: white;");
+                descSection.getChildren().add(descArea);
+                
+                mainContainer.getChildren().add(descSection);
+            }
             
-            grid.add(new Label("Service Description:"), 0, row);
-            Label descLabel = new Label(booking.getServiceDescription());
-            descLabel.setWrapText(true);
-            descLabel.setMaxWidth(300);
-            grid.add(descLabel, 1, row++);
+            // === PARTS & MATERIALS SECTION ===
+            try {
+                List<BookingPart> parts = bookingService.getBookingParts(booking.getId());
+                if (!parts.isEmpty()) {
+                    VBox partsSection = new VBox(10);
+                    partsSection.setStyle("-fx-background-color: #e8f5e9; -fx-padding: 15; -fx-background-radius: 5;");
+                    Label partsHeader = new Label("🔩 PARTS & MATERIALS USED");
+                    partsHeader.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #2E7D32;");
+                    partsSection.getChildren().add(partsHeader);
+                    
+                    // Create parts table
+                    TableView<BookingPart> partsTable = new TableView<>();
+                    partsTable.setPrefHeight(200);
+                    partsTable.setItems(FXCollections.observableArrayList(parts));
+                    partsTable.setStyle("-fx-background-color: white;");
+                    
+                    TableColumn<BookingPart, String> nameCol = new TableColumn<>("Part Name");
+                    nameCol.setCellValueFactory(new PropertyValueFactory<>("partName"));
+                    nameCol.setPrefWidth(300);
+                    
+                    TableColumn<BookingPart, Integer> qtyCol = new TableColumn<>("Quantity");
+                    qtyCol.setCellValueFactory(new PropertyValueFactory<>("quantity"));
+                    qtyCol.setPrefWidth(100);
+                    qtyCol.setStyle("-fx-alignment: CENTER;");
+                    
+                    TableColumn<BookingPart, Double> priceCol = new TableColumn<>("Unit Price");
+                    priceCol.setCellValueFactory(new PropertyValueFactory<>("price"));
+                    priceCol.setPrefWidth(120);
+                    priceCol.setCellFactory(col -> new TableCell<BookingPart, Double>() {
+                        @Override
+                        protected void updateItem(Double price, boolean empty) {
+                            super.updateItem(price, empty);
+                            if (empty || price == null) {
+                                setText(null);
+                            } else {
+                                setText("₱" + String.format("%.2f", price));
+                                setStyle("-fx-alignment: CENTER-RIGHT;");
+                            }
+                        }
+                    });
+                    
+                    TableColumn<BookingPart, Double> totalCol = new TableColumn<>("Subtotal");
+                    totalCol.setCellValueFactory(cellData -> 
+                        new javafx.beans.property.SimpleDoubleProperty(cellData.getValue().getTotalCost()).asObject());
+                    totalCol.setPrefWidth(120);
+                    totalCol.setCellFactory(col -> new TableCell<BookingPart, Double>() {
+                        @Override
+                        protected void updateItem(Double total, boolean empty) {
+                            super.updateItem(total, empty);
+                            if (empty || total == null) {
+                                setText(null);
+                            } else {
+                                setText("₱" + String.format("%.2f", total));
+                                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-weight: bold;");
+                            }
+                        }
+                    });
+                    
+                    @SuppressWarnings("unchecked")
+                    TableColumn<BookingPart, ?>[] columns = new TableColumn[] {nameCol, qtyCol, priceCol, totalCol};
+                    partsTable.getColumns().addAll(columns);
+                    partsSection.getChildren().add(partsTable);
+                    
+                    // Calculate total parts cost
+                    double totalPartsCost = parts.stream().mapToDouble(BookingPart::getTotalCost).sum();
+                    Label totalPartsLabel = new Label("Total Parts Cost: ₱" + String.format("%.2f", totalPartsCost));
+                    totalPartsLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2E7D32; -fx-padding: 10 0 0 0;");
+                    partsSection.getChildren().add(totalPartsLabel);
+                    
+                    mainContainer.getChildren().add(partsSection);
+                } else {
+                    VBox noPartsSection = new VBox(10);
+                    noPartsSection.setStyle("-fx-background-color: #fafafa; -fx-padding: 15; -fx-background-radius: 5; -fx-border-color: #e0e0e0; -fx-border-width: 1; -fx-border-radius: 5;");
+                    Label noPartsLabel = new Label("ℹ️  No parts or materials used for this service");
+                    noPartsLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #757575;");
+                    noPartsSection.getChildren().add(noPartsLabel);
+                    mainContainer.getChildren().add(noPartsSection);
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
             
-            grid.add(new Label("Booking Date:"), 0, row);
-            grid.add(new Label(booking.getDate().toString()), 1, row++);
+            // === BILLING SUMMARY SECTION ===
+            VBox billingSummarySection = new VBox(10);
+            billingSummarySection.setStyle("-fx-background-color: #e8f5e9; -fx-padding: 15; -fx-background-radius: 5; -fx-border-color: #4CAF50; -fx-border-width: 2; -fx-border-radius: 5;");
+            Label billingSummaryHeader = new Label("💵 BILLING SUMMARY");
+            billingSummaryHeader.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #2E7D32;");
+            billingSummarySection.getChildren().add(billingSummaryHeader);
             
-            grid.add(new Label("Booking Time:"), 0, row);
-            grid.add(new Label(booking.getTime()), 1, row++);
+            GridPane billingSummaryGrid = new GridPane();
+            billingSummaryGrid.setHgap(15);
+            billingSummaryGrid.setVgap(8);
+            billingSummaryGrid.setPadding(new Insets(10, 0, 0, 0));
             
-            grid.add(new Label("Status:"), 0, row);
-            Label bookingStatusLabel = new Label(booking.getStatus());
-            bookingStatusLabel.setStyle("-fx-font-weight: bold;");
-            grid.add(bookingStatusLabel, 1, row++);
+            row = 0;
+            try {
+                List<BookingPart> parts = bookingService.getBookingParts(booking.getId());
+                double partsCost = parts.stream().mapToDouble(BookingPart::getTotalCost).sum();
+                
+                // Service charge
+                double serviceCharge = bill.getAmount() - partsCost;
+                
+                addDetailRow(billingSummaryGrid, row++, "Service Charge:", "₱" + String.format("%.2f", serviceCharge), false);
+                addDetailRow(billingSummaryGrid, row++, "Parts Cost:", "₱" + String.format("%.2f", partsCost), false);
+            } catch (SQLException e) {
+                System.err.println("Could not calculate parts cost: " + e.getMessage());
+            }
             
-            dialog.getDialogPane().setContent(grid);
-            dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
-            dialog.getDialogPane().setPrefWidth(500);
+            addDetailRow(billingSummaryGrid, row++, "Payment Status:", bill.getPaymentStatus(), false);
             
+            // Add payment method if available
+            if (bill.getPaymentMethod() != null && !bill.getPaymentMethod().isEmpty()) {
+                addDetailRow(billingSummaryGrid, row++, "Payment Method:", bill.getPaymentMethod(), false);
+            }
+            
+            // Add reference number if available
+            if (bill.getReferenceNumber() != null && !bill.getReferenceNumber().isEmpty()) {
+                Label refLabel = new Label("Reference:");
+                refLabel.setStyle("-fx-font-weight: bold; -fx-min-width: 150px;");
+                Label refValue = new Label(bill.getReferenceNumber());
+                refValue.setWrapText(true);
+                refValue.setMaxWidth(400);
+                billingSummaryGrid.add(refLabel, 0, row);
+                billingSummaryGrid.add(refValue, 1, row++);
+            }
+            
+            billingSummarySection.getChildren().add(billingSummaryGrid);
+            
+            Label totalAmountLabel = new Label("TOTAL AMOUNT DUE: ₱" + String.format("%.2f", bill.getAmount()));
+            totalAmountLabel.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #1B5E20; -fx-padding: 10 0 0 0;");
+            billingSummarySection.getChildren().add(totalAmountLabel);
+            
+            mainContainer.getChildren().add(billingSummarySection);
+            
+            scrollPane.setContent(mainContainer);
+            
+            // Add close button
+            ButtonType closeButton = new ButtonType("Close", ButtonBar.ButtonData.CANCEL_CLOSE);
+            dialog.getDialogPane().getButtonTypes().add(closeButton);
+            
+            dialog.getDialogPane().setContent(scrollPane);
+            dialog.getDialogPane().setMinWidth(750);
+            dialog.getDialogPane().setMinHeight(650);
             dialog.showAndWait();
             
-        } catch (SQLException e) {
+        } catch (Exception e) {
             e.printStackTrace();
-            showAlert(Alert.AlertType.ERROR, "Error", "Could not load booking details: " + e.getMessage());
+            showAlert(Alert.AlertType.ERROR, "Error", "Failed to load bill details: " + e.getMessage());
         }
+    }
+    
+    // Helper method to add detail rows consistently
+    private void addDetailRow(GridPane grid, int row, String label, String value, boolean bold) {
+        Label labelNode = new Label(label);
+        labelNode.setStyle("-fx-font-weight: bold; -fx-min-width: 150px;");
+        
+        Label valueNode = new Label(value != null ? value : "N/A");
+        if (bold) {
+            valueNode.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
+        }
+        
+        grid.add(labelNode, 0, row);
+        grid.add(valueNode, 1, row);
     }
     
     private void processPayment(Bill bill) {
         try {
-            // Show payment confirmation dialog
+            // Create a dialog to choose payment method
+            Dialog<String> paymentDialog = new Dialog<>();
+            paymentDialog.setTitle("Payment Method");
+            paymentDialog.setHeaderText("Select Payment Method");
+            paymentDialog.setContentText("Choose how to process the payment:");
+            
+            VBox dialogContent = new VBox(15);
+            dialogContent.setPadding(new Insets(20));
+            
+            Label amountLabel = new Label("Amount: ₱" + String.format("%.2f", bill.getAmount()));
+            amountLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #1976D2;");
+            dialogContent.getChildren().add(amountLabel);
+            
+            // Cash Payment Button
+            Button cashBtn = new Button("💵 Cash Payment");
+            cashBtn.setPrefWidth(250);
+            cashBtn.setPrefHeight(50);
+            cashBtn.setStyle("-fx-font-size: 14px; -fx-padding: 10px;");
+            
+            // Bank Transfer/Online Payment Button
+            Button bankBtn = new Button("🏦 Bank Transfer / Online Payment");
+            bankBtn.setPrefWidth(250);
+            bankBtn.setPrefHeight(50);
+            bankBtn.setStyle("-fx-font-size: 14px; -fx-padding: 10px;");
+            
+            dialogContent.getChildren().addAll(cashBtn, bankBtn);
+            
+            paymentDialog.getDialogPane().setContent(dialogContent);
+            paymentDialog.getDialogPane().getButtonTypes().add(ButtonType.CANCEL);
+            
+            // Cash payment handler
+            cashBtn.setOnAction(e -> {
+                paymentDialog.close();
+                processCashPayment(bill);
+            });
+            
+            // Bank transfer handler
+            bankBtn.setOnAction(e -> {
+                paymentDialog.close();
+                processBankTransferPayment(bill);
+            });
+            
+            paymentDialog.showAndWait();
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Error", "Failed to process payment: " + e.getMessage());
+        }
+    }
+    
+    private void processCashPayment(Bill bill) {
+        try {
+            // Show confirmation dialog for cash payment
             Alert confirmDialog = new Alert(Alert.AlertType.CONFIRMATION);
-            confirmDialog.setTitle("Payment Confirmation");
-            confirmDialog.setHeaderText("Confirm Payment");
-            confirmDialog.setContentText("Process payment of ₱" + String.format("%.2f", bill.getAmount()) + 
+            confirmDialog.setTitle("Cash Payment Confirmation");
+            confirmDialog.setHeaderText("Confirm Cash Payment");
+            confirmDialog.setContentText("Process cash payment of ₱" + String.format("%.2f", bill.getAmount()) + 
                                          " for bill " + bill.getHexId() + "?");
             
             confirmDialog.showAndWait().ifPresent(response -> {
                 if (response == ButtonType.OK) {
                     try {
-                        boolean success = billingService.updateBillStatus(bill.getId(), "Paid");
+                        boolean success = billingService.updateBillPayment(bill.getId(), "Paid", "Cash", null);
                         if (success) {
                             bill.setPaymentStatus("Paid");
+                            bill.setPaymentMethod("Cash");
                             billTable.refresh();
-                            statusLabel.setText("Payment processed for bill " + bill.getHexId());
+                            statusLabel.setText("Cash payment processed for bill " + bill.getHexId());
                             
                             showAlert(Alert.AlertType.INFORMATION, 
                                     "Payment Processed", 
-                                    "Payment has been successfully processed.");
+                                    "Cash payment has been successfully processed.");
                         } else {
                             showAlert(Alert.AlertType.ERROR, 
                                     "Payment Error", 
@@ -291,86 +525,580 @@ public class BillingController {
             });
         } catch (Exception e) {
             e.printStackTrace();
-            showAlert(Alert.AlertType.ERROR, "Error", "Failed to process payment: " + e.getMessage());
+            showAlert(Alert.AlertType.ERROR, "Error", "Failed to process cash payment: " + e.getMessage());
+        }
+    }
+    
+    private void processBankTransferPayment(Bill bill) {
+        try {
+            // Create a dialog to enter bank transfer details
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.setTitle("Bank Transfer / Online Payment");
+            dialog.setHeaderText("Enter Payment Details");
+            
+            VBox content = new VBox(15);
+            content.setPadding(new Insets(20));
+            content.setStyle("-fx-background-color: white;");
+            
+            // Amount display
+            Label amountLabel = new Label("Amount: ₱" + String.format("%.2f", bill.getAmount()));
+            amountLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #1976D2;");
+            content.getChildren().add(amountLabel);
+            
+            // Payment method selection
+            HBox methodBox = new HBox(15);
+            Label methodLabel = new Label("Payment Method:");
+            methodLabel.setPrefWidth(150);
+            methodLabel.setStyle("-fx-font-weight: bold;");
+            
+            ComboBox<String> methodCombo = new ComboBox<>();
+            methodCombo.setItems(FXCollections.observableArrayList(
+                "Bank Transfer",
+                "Online Payment",
+                "E-wallet"
+            ));
+            methodCombo.setPrefWidth(200);
+            methodCombo.setValue("Bank Transfer");
+            methodBox.getChildren().addAll(methodLabel, methodCombo);
+            content.getChildren().add(methodBox);
+            
+            // Reference number input
+            HBox refBox = new HBox(15);
+            Label refLabel = new Label("Reference Number:");
+            refLabel.setPrefWidth(150);
+            refLabel.setStyle("-fx-font-weight: bold;");
+            
+            TextField refField = new TextField();
+            refField.setPromptText("Enter transaction ID / Reference number");
+            refField.setPrefWidth(200);
+            refBox.getChildren().addAll(refLabel, refField);
+            content.getChildren().add(refBox);
+            
+            // Bank name input (optional)
+            HBox bankBox = new HBox(15);
+            Label bankLabel = new Label("Bank/Provider:");
+            bankLabel.setPrefWidth(150);
+            bankLabel.setStyle("-fx-font-weight: bold;");
+            
+            TextField bankField = new TextField();
+            bankField.setPromptText("E.g., BDO, BPI, GCash, etc. (Optional)");
+            bankField.setPrefWidth(200);
+            bankBox.getChildren().addAll(bankLabel, bankField);
+            content.getChildren().add(bankBox);
+            
+            // Notes
+            HBox notesBox = new HBox(15);
+            Label notesLabel = new Label("Notes:");
+            notesLabel.setPrefWidth(150);
+            notesLabel.setStyle("-fx-font-weight: bold;");
+            notesLabel.setAlignment(javafx.geometry.Pos.TOP_LEFT);
+            
+            TextArea notesArea = new TextArea();
+            notesArea.setPromptText("Add any additional notes (Optional)");
+            notesArea.setPrefHeight(80);
+            notesArea.setPrefWidth(200);
+            notesArea.setWrapText(true);
+            notesBox.getChildren().addAll(notesLabel, notesArea);
+            content.getChildren().add(notesBox);
+            
+            dialog.getDialogPane().setContent(content);
+            dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+            
+            Optional<ButtonType> result = dialog.showAndWait();
+            
+            if (result.isPresent() && result.get() == ButtonType.OK) {
+                String method = methodCombo.getValue();
+                String refNumber = refField.getText().trim();
+                String bankName = bankField.getText().trim();
+                String notes = notesArea.getText().trim();
+                
+                if (refNumber.isEmpty()) {
+                    showAlert(Alert.AlertType.WARNING, 
+                            "Missing Information", 
+                            "Please enter a reference number for the transaction.");
+                    return;
+                }
+                
+                // Build complete reference with bank and notes
+                String fullReference = refNumber;
+                if (!bankName.isEmpty()) {
+                    fullReference += " (" + bankName + ")";
+                }
+                if (!notes.isEmpty()) {
+                    fullReference += " - " + notes;
+                }
+                
+                try {
+                    boolean success = billingService.updateBillPayment(bill.getId(), "Paid", method, fullReference);
+                    if (success) {
+                        bill.setPaymentStatus("Paid");
+                        bill.setPaymentMethod(method);
+                        bill.setReferenceNumber(fullReference);
+                        billTable.refresh();
+                        statusLabel.setText(method + " payment processed for bill " + bill.getHexId());
+                        
+                        showAlert(Alert.AlertType.INFORMATION, 
+                                "Payment Processed", 
+                                method + " payment has been successfully recorded.\n\n" +
+                                "Reference: " + refNumber + "\n" +
+                                (bankName.isEmpty() ? "" : "Bank/Provider: " + bankName + "\n"));
+                    } else {
+                        showAlert(Alert.AlertType.ERROR, 
+                                "Payment Error", 
+                                "Failed to process payment. Please try again.");
+                    }
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                    showAlert(Alert.AlertType.ERROR, 
+                            "Database Error", 
+                            "Failed to update payment: " + ex.getMessage());
+                }
+            }
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Error", "Failed to process bank transfer: " + e.getMessage());
         }
     }
     
     private void printReceipt(Bill bill) {
-        // Create a dialog to display the receipt
-        Dialog<Void> dialog = new Dialog<>();
-        dialog.setTitle("Receipt");
-        dialog.setHeaderText("Receipt for Bill " + bill.getHexId());
-        
-        // Create the receipt content
-        GridPane grid = new GridPane();
-        grid.setHgap(10);
-        grid.setVgap(10);
-        grid.setPadding(new Insets(20));
-        
-        int row = 0;
-        
-        // Add receipt header
-        Label headerLabel = new Label("AutoTech Service Receipt");
-        headerLabel.setStyle("-fx-font-size: 16; -fx-font-weight: bold;");
-        grid.add(headerLabel, 0, row++, 2, 1);
-        
-        // Add horizontal line
-        Separator separator = new Separator();
-        grid.add(separator, 0, row++, 2, 1);
-        
-        // Add receipt details
-        grid.add(new Label("Receipt #:"), 0, row);
-        grid.add(new Label(bill.getHexId()), 1, row++);
-        
-        grid.add(new Label("Date:"), 0, row);
-        grid.add(new Label(bill.getBillDate().toString()), 1, row++);
-        
-        grid.add(new Label("Customer:"), 0, row);
-        grid.add(new Label(bill.getCustomerName()), 1, row++);
-        
-        grid.add(new Label("Vehicle:"), 0, row);
-        grid.add(new Label(bill.getVehicleInfo()), 1, row++);
-        
-        grid.add(new Label("Service ID:"), 0, row);
-        grid.add(new Label(String.valueOf(bill.getServiceId())), 1, row++);
-        
-        // Add another separator before amount
-        grid.add(new Separator(), 0, row++, 2, 1);
-        
-        grid.add(new Label("Amount:"), 0, row);
-        Label amountLabel = new Label(String.format("₱%.2f", bill.getAmount()));
-        amountLabel.setStyle("-fx-font-weight: bold;");
-        grid.add(amountLabel, 1, row++);
-        
-        grid.add(new Label("Status:"), 0, row);
-        Label statusLabel = new Label(bill.getPaymentStatus());
-        statusLabel.setStyle("-fx-text-fill: green; -fx-font-weight: bold;");
-        grid.add(statusLabel, 1, row++);
-        
-        // Add a thank you message
-        Label thankYouLabel = new Label("Thank you for your business!");
-        thankYouLabel.setStyle("-fx-font-style: italic;");
-        grid.add(thankYouLabel, 0, row + 1, 2, 1);
-        
-        // Add close button
-        ButtonType closeButton = new ButtonType("Close", ButtonBar.ButtonData.CANCEL_CLOSE);
-        dialog.getDialogPane().getButtonTypes().add(closeButton);
-        
-        // Add print button
-        ButtonType printButton = new ButtonType("Print", ButtonBar.ButtonData.OK_DONE);
-        dialog.getDialogPane().getButtonTypes().add(printButton);
-        
-        dialog.getDialogPane().setContent(grid);
-        
-        dialog.setResultConverter(dialogButton -> {
-            if (dialogButton == printButton) {
-                // In a real application, this would send the receipt to a printer
-                statusLabel.setText("Receipt for bill " + bill.getHexId() + " sent to printer");
+        try {
+            // Fetch booking details for receipt
+            ServiceBookingService bookingService = new ServiceBookingService();
+            ServiceBookingViewModel booking = bookingService.getBookingById(bill.getServiceId());
+            
+            // Create a dialog to display the receipt
+            Dialog<Void> dialog = new Dialog<>();
+            dialog.setTitle("Receipt - " + bill.getHexId());
+            dialog.setHeaderText(null);
+            
+            // Create scrollable receipt content
+            ScrollPane scrollPane = new ScrollPane();
+            scrollPane.setFitToWidth(true);
+            scrollPane.setPrefHeight(600);
+            
+            VBox mainContainer = new VBox(0);
+            mainContainer.setStyle("-fx-background-color: white;");
+            
+            // === RECEIPT HEADER ===
+            VBox headerBox = new VBox(5);
+            headerBox.setStyle("-fx-background-color: #1976D2; -fx-padding: 20; -fx-alignment: center;");
+            
+            Label companyLabel = new Label("AUTOTECH SERVICE CENTER");
+            companyLabel.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: white;");
+            
+            Label taglineLabel = new Label("Professional Vehicle Maintenance & Repair");
+            taglineLabel.setStyle("-fx-font-size: 12px; -fx-text-fill: #E3F2FD;");
+            
+            headerBox.getChildren().addAll(companyLabel, taglineLabel);
+            mainContainer.getChildren().add(headerBox);
+            
+            // === RECEIPT CONTENT ===
+            VBox contentBox = new VBox(15);
+            contentBox.setPadding(new Insets(20));
+            contentBox.setStyle("-fx-background-color: white;");
+            
+            // Receipt title and number
+            HBox titleBox = new HBox();
+            titleBox.setSpacing(50);
+            Label receiptTitleLabel = new Label("RECEIPT");
+            receiptTitleLabel.setStyle("-fx-font-size: 18px; -fx-font-weight: bold;");
+            Label receiptNumberLabel = new Label("Receipt #: " + bill.getHexId());
+            receiptNumberLabel.setStyle("-fx-font-size: 12px; -fx-font-weight: bold;");
+            titleBox.getChildren().addAll(receiptTitleLabel, receiptNumberLabel);
+            contentBox.getChildren().add(titleBox);
+            
+            // Separator
+            Separator sep1 = new Separator();
+            sep1.setStyle("-fx-padding: 0;");
+            contentBox.getChildren().add(sep1);
+            
+            // Receipt date and time
+            HBox dateBox = new HBox(50);
+            Label dateLabel = new Label("Date: " + bill.getBillDate());
+            dateLabel.setStyle("-fx-font-size: 11px;");
+            Label timeLabel = new Label("Time: " + java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")));
+            timeLabel.setStyle("-fx-font-size: 11px;");
+            dateBox.getChildren().addAll(dateLabel, timeLabel);
+            contentBox.getChildren().add(dateBox);
+            
+            contentBox.getChildren().add(new Label(" "));
+            
+            // === CUSTOMER & VEHICLE SECTION ===
+            GridPane infoGrid = new GridPane();
+            infoGrid.setHgap(20);
+            infoGrid.setVgap(8);
+            
+            Label customerTitleLabel = new Label("CUSTOMER INFORMATION");
+            customerTitleLabel.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #1976D2;");
+            infoGrid.add(customerTitleLabel, 0, 0, 2, 1);
+            
+            Label customerNameLabel = new Label(bill.getCustomerName());
+            customerNameLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 12px;");
+            infoGrid.add(customerNameLabel, 0, 1);
+            
+            Label vehicleLabel = new Label(bill.getVehicleInfo());
+            vehicleLabel.setStyle("-fx-font-size: 11px;");
+            infoGrid.add(vehicleLabel, 0, 2);
+            
+            // Service info on right side
+            Label serviceTitleLabel = new Label("SERVICE DETAILS");
+            serviceTitleLabel.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #1976D2;");
+            infoGrid.add(serviceTitleLabel, 1, 0);
+            
+            if (booking != null) {
+                Label serviceTypeLabel = new Label(booking.getServiceType());
+                serviceTypeLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
+                infoGrid.add(serviceTypeLabel, 1, 1);
+                
+                Label mechanicLabel = new Label("Mechanic: " + booking.getMechanic().getName());
+                mechanicLabel.setStyle("-fx-font-size: 10px;");
+                infoGrid.add(mechanicLabel, 1, 2);
             }
-            return null;
-        });
-        
-        dialog.showAndWait();
+            
+            contentBox.getChildren().add(infoGrid);
+            contentBox.getChildren().add(new Label(" "));
+            
+            // === SEPARATOR LINE ===
+            Separator sep2 = new Separator();
+            sep2.setStyle("-fx-padding: 5 0;");
+            contentBox.getChildren().add(sep2);
+            
+            // === BILLING DETAILS ===
+            GridPane billingGrid = new GridPane();
+            billingGrid.setHgap(20);
+            billingGrid.setVgap(8);
+            
+            int billingRow = 0;
+            Label billIdLabel = new Label("Bill ID:");
+            billIdLabel.setStyle("-fx-font-weight: bold;");
+            billingGrid.add(billIdLabel, 0, billingRow);
+            Label billIdValueLabel = new Label(bill.getHexId());
+            billIdValueLabel.setStyle("-fx-font-size: 11px;");
+            billingGrid.add(billIdValueLabel, 1, billingRow++);
+            
+            Label amountTitleLabel = new Label("Amount:");
+            amountTitleLabel.setStyle("-fx-font-weight: bold;");
+            billingGrid.add(amountTitleLabel, 0, billingRow);
+            Label amountValueLabel = new Label("₱" + String.format("%.2f", bill.getAmount()));
+            amountValueLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px; -fx-text-fill: #1B5E20;");
+            billingGrid.add(amountValueLabel, 1, billingRow++);
+            
+            Label statusTitleLabel = new Label("Payment Status:");
+            statusTitleLabel.setStyle("-fx-font-weight: bold;");
+            billingGrid.add(statusTitleLabel, 0, billingRow);
+            Label statusValueLabel = new Label(bill.getPaymentStatus());
+            statusValueLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 11px; -fx-text-fill: green;");
+            billingGrid.add(statusValueLabel, 1, billingRow++);
+            
+            // Payment method if available
+            if (bill.getPaymentMethod() != null && !bill.getPaymentMethod().isEmpty()) {
+                Label methodTitleLabel = new Label("Payment Method:");
+                methodTitleLabel.setStyle("-fx-font-weight: bold;");
+                billingGrid.add(methodTitleLabel, 0, billingRow);
+                Label methodValueLabel = new Label(bill.getPaymentMethod());
+                methodValueLabel.setStyle("-fx-font-size: 11px;");
+                billingGrid.add(methodValueLabel, 1, billingRow++);
+            }
+            
+            contentBox.getChildren().add(billingGrid);
+            contentBox.getChildren().add(new Label(" "));
+            
+            // === PARTS & MATERIALS (if any) ===
+            try {
+                List<BookingPart> parts = bookingService.getBookingParts(booking.getId());
+                if (!parts.isEmpty()) {
+                    Label partsHeaderLabel = new Label("PARTS & MATERIALS USED:");
+                    partsHeaderLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 11px; -fx-text-fill: #1976D2;");
+                    contentBox.getChildren().add(partsHeaderLabel);
+                    
+                    GridPane partsGrid = new GridPane();
+                    partsGrid.setHgap(15);
+                    partsGrid.setVgap(5);
+                    partsGrid.setPadding(new Insets(5, 0, 0, 0));
+                    
+                    // Header row
+                    Label partNameHeader = new Label("Part");
+                    partNameHeader.setStyle("-fx-font-weight: bold; -fx-font-size: 10px;");
+                    Label qtyHeader = new Label("Qty");
+                    qtyHeader.setStyle("-fx-font-weight: bold; -fx-font-size: 10px;");
+                    Label priceHeader = new Label("Unit Price");
+                    priceHeader.setStyle("-fx-font-weight: bold; -fx-font-size: 10px;");
+                    Label subtotalHeader = new Label("Subtotal");
+                    subtotalHeader.setStyle("-fx-font-weight: bold; -fx-font-size: 10px;");
+                    
+                    partsGrid.add(partNameHeader, 0, 0);
+                    partsGrid.add(qtyHeader, 1, 0);
+                    partsGrid.add(priceHeader, 2, 0);
+                    partsGrid.add(subtotalHeader, 3, 0);
+                    
+                    int partRow = 1;
+                    double totalPartsCost = 0;
+                    for (BookingPart part : parts) {
+                        Label partNameLabel = new Label(part.getPartName());
+                        partNameLabel.setStyle("-fx-font-size: 10px;");
+                        partsGrid.add(partNameLabel, 0, partRow);
+                        
+                        Label qtyLabel = new Label(String.valueOf(part.getQuantity()));
+                        qtyLabel.setStyle("-fx-font-size: 10px; -fx-alignment: center;");
+                        partsGrid.add(qtyLabel, 1, partRow);
+                        
+                        Label priceLabel = new Label("₱" + String.format("%.2f", part.getPrice()));
+                        priceLabel.setStyle("-fx-font-size: 10px; -fx-alignment: center-right;");
+                        partsGrid.add(priceLabel, 2, partRow);
+                        
+                        double subtotal = part.getTotalCost();
+                        totalPartsCost += subtotal;
+                        Label subtotalLabel = new Label("₱" + String.format("%.2f", subtotal));
+                        subtotalLabel.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-alignment: center-right;");
+                        partsGrid.add(subtotalLabel, 3, partRow);
+                        
+                        partRow++;
+                    }
+                    
+                    contentBox.getChildren().add(partsGrid);
+                    
+                    Label totalPartsLabel = new Label("Total Parts: ₱" + String.format("%.2f", totalPartsCost));
+                    totalPartsLabel.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 5 0 0 0;");
+                    contentBox.getChildren().add(totalPartsLabel);
+                    contentBox.getChildren().add(new Label(" "));
+                }
+            } catch (SQLException e) {
+                System.err.println("Error loading parts: " + e.getMessage());
+            }
+            
+            // === SEPARATOR ===
+            Separator sep3 = new Separator();
+            sep3.setStyle("-fx-padding: 5 0;");
+            contentBox.getChildren().add(sep3);
+            
+            // === TOTAL AMOUNT (Prominent Display) ===
+            VBox totalBox = new VBox(10);
+            totalBox.setStyle("-fx-background-color: #E8F5E9; -fx-padding: 15; -fx-border-color: #4CAF50; -fx-border-width: 2;");
+            totalBox.setAlignment(javafx.geometry.Pos.CENTER);
+            
+            Label totalLabelText = new Label("TOTAL AMOUNT DUE");
+            totalLabelText.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #2E7D32;");
+            
+            Label totalAmount = new Label("₱" + String.format("%.2f", bill.getAmount()));
+            totalAmount.setStyle("-fx-font-size: 28px; -fx-font-weight: bold; -fx-text-fill: #1B5E20;");
+            
+            totalBox.getChildren().addAll(totalLabelText, totalAmount);
+            contentBox.getChildren().add(totalBox);
+            
+            contentBox.getChildren().add(new Label(" "));
+            contentBox.getChildren().add(new Label(" "));
+            
+            // === FOOTER MESSAGE ===
+            Label footerLabel = new Label("Thank you for choosing AutoTech!");
+            footerLabel.setStyle("-fx-font-size: 11px; -fx-font-style: italic; -fx-text-fill: #666;");
+            footerLabel.setWrapText(true);
+            contentBox.getChildren().add(footerLabel);
+            
+            Label contactLabel = new Label("For inquiries, please contact us at admin@autotech.com");
+            contactLabel.setStyle("-fx-font-size: 10px; -fx-text-fill: #999;");
+            contentBox.getChildren().add(contactLabel);
+            
+            scrollPane.setContent(contentBox);
+            
+            // === DIALOG BUTTONS ===
+            dialog.getDialogPane().setContent(scrollPane);
+            dialog.getDialogPane().getButtonTypes().clear();
+            
+            ButtonType printButton = new ButtonType("🖨️ Print", ButtonBar.ButtonData.LEFT);
+            ButtonType emailButton = new ButtonType("📧 Email Receipt", ButtonBar.ButtonData.LEFT);
+            ButtonType closeButton = new ButtonType("Close", ButtonBar.ButtonData.CANCEL_CLOSE);
+            
+            dialog.getDialogPane().getButtonTypes().addAll(printButton, emailButton, closeButton);
+            
+            dialog.getDialogPane().setMinWidth(700);
+            dialog.getDialogPane().setMinHeight(700);
+            
+            // Button handlers
+            dialog.setOnShown(e -> {
+                Button printBtn = (Button) dialog.getDialogPane().lookupButton(printButton);
+                printBtn.setOnAction(event -> {
+                    printReceiptToPrinter(bill, booking, contentBox);
+                    dialog.close();
+                });
+                
+                Button emailBtn = (Button) dialog.getDialogPane().lookupButton(emailButton);
+                emailBtn.setOnAction(event -> {
+                    sendReceiptEmail(bill, booking);
+                    dialog.close();
+                });
+            });
+            
+            dialog.showAndWait();
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Error", "Failed to generate receipt: " + e.getMessage());
+        }
+    }
+    
+    private void printReceiptToPrinter(Bill bill, ServiceBookingViewModel booking, VBox receiptContent) {
+        try {
+            PrinterJob printerJob = PrinterJob.createPrinterJob();
+            if (printerJob != null && printerJob.showPrintDialog(null)) {
+                boolean success = printerJob.printPage(receiptContent);
+                if (success) {
+                    printerJob.endJob();
+                    statusLabel.setText("Receipt printed successfully for bill " + bill.getHexId());
+                    showAlert(Alert.AlertType.INFORMATION, "Print Successful", 
+                             "Receipt has been sent to the printer.");
+                } else {
+                    showAlert(Alert.AlertType.ERROR, "Print Error", 
+                             "Failed to print receipt.");
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Print Error", 
+                     "Error while printing: " + e.getMessage());
+        }
+    }
+    
+    private void sendReceiptEmail(Bill bill, ServiceBookingViewModel booking) {
+        try {
+            // Get customer email
+            Customer customer = CustomerService.getInstance().getCustomerById(bill.getCustomerId());
+            if (customer == null || customer.getEmail() == null || customer.getEmail().isEmpty()) {
+                showAlert(Alert.AlertType.WARNING, "No Email", 
+                         "Customer email not found. Please add an email address for this customer.");
+                return;
+            }
+            
+            // Build receipt HTML
+            StringBuilder htmlContent = new StringBuilder();
+            htmlContent.append("<html><body style='font-family: Arial, sans-serif; background-color: #f5f5f5;'>");
+            htmlContent.append("<div style='max-width: 600px; margin: 20px auto; background-color: white; border: 1px solid #ddd;'>");
+            
+            // Header
+            htmlContent.append("<div style='background-color: #1976D2; color: white; padding: 20px; text-align: center;'>");
+            htmlContent.append("<h1 style='margin: 0; font-size: 24px;'>AUTOTECH SERVICE CENTER</h1>");
+            htmlContent.append("<p style='margin: 5px 0 0 0; font-size: 12px;'>Professional Vehicle Maintenance & Repair</p>");
+            htmlContent.append("</div>");
+            
+            // Content
+            htmlContent.append("<div style='padding: 20px;'>");
+            
+            // Receipt title
+            htmlContent.append("<div style='display: flex; justify-content: space-between; margin-bottom: 20px;'>");
+            htmlContent.append("<h2 style='margin: 0; color: #333;'>RECEIPT</h2>");
+            htmlContent.append("<p style='margin: 0; font-weight: bold;'>Receipt #: ").append(bill.getHexId()).append("</p>");
+            htmlContent.append("</div>");
+            
+            // Date and time
+            htmlContent.append("<p style='margin: 5px 0; font-size: 12px; color: #666;'>");
+            htmlContent.append("Date: ").append(bill.getBillDate()).append(" | Time: ");
+            htmlContent.append(java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")));
+            htmlContent.append("</p>");
+            
+            htmlContent.append("<hr style='border: none; border-top: 1px solid #ddd; margin: 15px 0;'>");
+            
+            // Customer and service info
+            htmlContent.append("<table style='width: 100%; margin-bottom: 15px;'>");
+            htmlContent.append("<tr>");
+            htmlContent.append("<td style='vertical-align: top; width: 50%;'>");
+            htmlContent.append("<p style='margin: 0 0 5px 0; font-weight: bold; color: #1976D2;'>CUSTOMER INFORMATION</p>");
+            htmlContent.append("<p style='margin: 5px 0; font-weight: bold;'>").append(bill.getCustomerName()).append("</p>");
+            htmlContent.append("<p style='margin: 5px 0; font-size: 12px;'>").append(bill.getVehicleInfo()).append("</p>");
+            htmlContent.append("</td>");
+            htmlContent.append("<td style='vertical-align: top; width: 50%;'>");
+            htmlContent.append("<p style='margin: 0 0 5px 0; font-weight: bold; color: #1976D2;'>SERVICE DETAILS</p>");
+            if (booking != null) {
+                htmlContent.append("<p style='margin: 5px 0; font-weight: bold;'>").append(booking.getServiceType()).append("</p>");
+                htmlContent.append("<p style='margin: 5px 0; font-size: 12px;'>Mechanic: ").append(booking.getMechanic().getName()).append("</p>");
+            }
+            htmlContent.append("</td>");
+            htmlContent.append("</tr>");
+            htmlContent.append("</table>");
+            
+            htmlContent.append("<hr style='border: none; border-top: 1px solid #ddd; margin: 15px 0;'>");
+            
+            // Billing details
+            htmlContent.append("<table style='width: 100%; margin-bottom: 15px; font-size: 13px;'>");
+            htmlContent.append("<tr><td style='font-weight: bold;'>Bill ID:</td><td>").append(bill.getHexId()).append("</td></tr>");
+            htmlContent.append("<tr><td style='font-weight: bold;'>Amount:</td><td style='font-weight: bold; color: #1B5E20;'>₱").append(String.format("%.2f", bill.getAmount())).append("</td></tr>");
+            htmlContent.append("<tr><td style='font-weight: bold;'>Payment Status:</td><td style='color: green;'>").append(bill.getPaymentStatus()).append("</td></tr>");
+            if (bill.getPaymentMethod() != null && !bill.getPaymentMethod().isEmpty()) {
+                htmlContent.append("<tr><td style='font-weight: bold;'>Payment Method:</td><td>").append(bill.getPaymentMethod()).append("</td></tr>");
+            }
+            htmlContent.append("</table>");
+            
+            // Parts (if any)
+            try {
+                ServiceBookingService bookingService = new ServiceBookingService();
+                List<BookingPart> parts = bookingService.getBookingParts(booking.getId());
+                if (!parts.isEmpty()) {
+                    htmlContent.append("<div style='margin-bottom: 15px;'>");
+                    htmlContent.append("<p style='margin: 0 0 10px 0; font-weight: bold; color: #1976D2;'>PARTS & MATERIALS USED</p>");
+                    htmlContent.append("<table style='width: 100%; border-collapse: collapse; font-size: 12px;'>");
+                    htmlContent.append("<tr style='background-color: #f0f0f0;'>");
+                    htmlContent.append("<th style='text-align: left; padding: 8px; border: 1px solid #ddd;'>Part</th>");
+                    htmlContent.append("<th style='text-align: center; padding: 8px; border: 1px solid #ddd;'>Qty</th>");
+                    htmlContent.append("<th style='text-align: right; padding: 8px; border: 1px solid #ddd;'>Unit Price</th>");
+                    htmlContent.append("<th style='text-align: right; padding: 8px; border: 1px solid #ddd;'>Subtotal</th>");
+                    htmlContent.append("</tr>");
+                    
+                    double totalPartsCost = 0;
+                    for (BookingPart part : parts) {
+                        htmlContent.append("<tr>");
+                        htmlContent.append("<td style='padding: 8px; border: 1px solid #ddd;'>").append(part.getPartName()).append("</td>");
+                        htmlContent.append("<td style='text-align: center; padding: 8px; border: 1px solid #ddd;'>").append(part.getQuantity()).append("</td>");
+                        htmlContent.append("<td style='text-align: right; padding: 8px; border: 1px solid #ddd;'>₱").append(String.format("%.2f", part.getPrice())).append("</td>");
+                        htmlContent.append("<td style='text-align: right; padding: 8px; border: 1px solid #ddd; font-weight: bold;'>₱").append(String.format("%.2f", part.getTotalCost())).append("</td>");
+                        htmlContent.append("</tr>");
+                        totalPartsCost += part.getTotalCost();
+                    }
+                    
+                    htmlContent.append("</table>");
+                    htmlContent.append("<p style='margin: 10px 0 0 0; text-align: right; font-weight: bold;'>Total Parts: ₱").append(String.format("%.2f", totalPartsCost)).append("</p>");
+                    htmlContent.append("</div>");
+                }
+            } catch (SQLException e) {
+                System.err.println("Error loading parts: " + e.getMessage());
+            }
+            
+            htmlContent.append("<hr style='border: none; border-top: 2px solid #ddd; margin: 15px 0;'>");
+            
+            // Total amount
+            htmlContent.append("<div style='background-color: #E8F5E9; padding: 15px; text-align: center; border: 2px solid #4CAF50; margin-bottom: 15px;'>");
+            htmlContent.append("<p style='margin: 0 0 10px 0; font-weight: bold; color: #2E7D32;'>TOTAL AMOUNT DUE</p>");
+            htmlContent.append("<p style='margin: 0; font-size: 24px; font-weight: bold; color: #1B5E20;'>₱").append(String.format("%.2f", bill.getAmount())).append("</p>");
+            htmlContent.append("</div>");
+            
+            // Footer
+            htmlContent.append("<p style='margin: 15px 0 5px 0; font-size: 12px; color: #666; text-align: center; font-style: italic;'>Thank you for choosing AutoTech!</p>");
+            htmlContent.append("<p style='margin: 0; font-size: 11px; color: #999; text-align: center;'>For inquiries: admin@autotech.com</p>");
+            
+            htmlContent.append("</div>");
+            htmlContent.append("</div></body></html>");
+            
+            // Send email
+            EmailService emailService = EmailService.getInstance();
+            boolean emailSent = emailService.sendReceiptEmail(customer.getEmail(), bill.getHexId(), bill.getCustomerName(), 
+                                        "₱" + String.format("%.2f", bill.getAmount()), htmlContent.toString());
+            
+            // Log email to database
+            EmailHistoryService.logEmailSent(bill.getId(), customer.getEmail(), "Receipt", 
+                                            "Receipt #" + bill.getHexId() + " - Service Receipt", 
+                                            emailSent ? "sent" : "failed", null);
+            
+            statusLabel.setText("Receipt emailed successfully to " + customer.getEmail());
+            showAlert(Alert.AlertType.INFORMATION, "Email Sent", 
+                     "Receipt has been sent to " + customer.getEmail());
+            
+        } catch (SQLException e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Email Error", 
+                     "Error retrieving customer information: " + e.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Email Error", 
+                     "Error sending receipt: " + e.getMessage());
+        }
     }
     
     @FXML
@@ -396,6 +1124,8 @@ public class BillingController {
         loadBills();
         billTable.setItems(billList);
     }
+    
+
     
     @FXML
     private void handleGenerateBill() {

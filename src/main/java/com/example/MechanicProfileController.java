@@ -29,8 +29,8 @@ public class MechanicProfileController {
     
     @FXML
     public void initialize() {
-        // Set up status combo box
-        statusComboBox.getItems().addAll("Available", "Busy", "Off Duty");
+        // Set up status combo box - only Available and Off Duty (Busy/Overloaded are auto-calculated)
+        statusComboBox.getItems().addAll("Available", "Off Duty");
         
         // Load mechanic data
         loadMechanicProfile();
@@ -69,7 +69,13 @@ public class MechanicProfileController {
             // Set current status
             String status = currentMechanic.getAvailability();
             currentStatusLabel.setText(status);
-            statusComboBox.setValue(status);
+            
+            // Set combo box value - map auto-calculated statuses to Available
+            if ("Busy".equals(status) || "Overloaded".equals(status)) {
+                statusComboBox.setValue("Available");
+            } else {
+                statusComboBox.setValue(status);
+            }
             
             // Update status label styling based on availability
             updateStatusLabelStyle(status);
@@ -88,7 +94,7 @@ public class MechanicProfileController {
             }
             
             String query = "SELECT status, COUNT(*) as count FROM service_bookings " +
-                          "WHERE mechanic_id = ? GROUP BY status";
+                          "WHERE mechanic_id = ? AND status != 'cancelled' GROUP BY status";
             
             try (Connection conn = DatabaseUtil.getConnection();
                  PreparedStatement stmt = conn.prepareStatement(query)) {
@@ -149,6 +155,34 @@ public class MechanicProfileController {
         }
         
         try {
+            // If setting to Available, let the system calculate actual status based on workload
+            if ("Available".equals(newStatus)) {
+                String updateQuery = "UPDATE mechanics SET availability = ? WHERE id = ?";
+                try (Connection conn = DatabaseUtil.getConnection();
+                     PreparedStatement stmt = conn.prepareStatement(updateQuery)) {
+                    
+                    stmt.setString(1, "Available");
+                    stmt.setInt(2, currentMechanic.getId());
+                    stmt.executeUpdate();
+                }
+                
+                // Let the system recalculate based on actual job count
+                mechanicService.updateMechanicAvailability(currentMechanic.getId());
+                
+                // Reload to show actual calculated status
+                User user = UserService.getInstance().getCurrentUser();
+                Mechanic updated = mechanicService.getMechanicByUserId(user.getId());
+                String actualStatus = updated.getAvailability();
+                currentMechanic.setAvailability(actualStatus);
+                currentStatusLabel.setText(actualStatus);
+                updateStatusLabelStyle(actualStatus);
+                
+                showAlert(Alert.AlertType.INFORMATION, "Success", 
+                         "Status updated to " + actualStatus + " (calculated based on workload)");
+                loadJobStatistics();
+                return;
+            }
+            
             // Update mechanic status in database
             String updateQuery = "UPDATE mechanics SET availability = ? WHERE id = ?";
             try (Connection conn = DatabaseUtil.getConnection();
@@ -163,23 +197,8 @@ public class MechanicProfileController {
                     currentStatusLabel.setText(newStatus);
                     updateStatusLabelStyle(newStatus);
                     
-                    // If status changed to Available, check for delayed bookings
-                    if ("Available".equalsIgnoreCase(newStatus)) {
-                        int updatedCount = bookingService.checkAndUpdateDelayedBookings();
-                        if (updatedCount > 0) {
-                            Platform.runLater(() -> {
-                                showAlert(Alert.AlertType.INFORMATION, "Status Updated", 
-                                         "Your status has been updated to " + newStatus + ".\n\n" +
-                                         "✓ " + updatedCount + " delayed booking(s) automatically updated to scheduled!");
-                                loadJobStatistics(); // Refresh counts
-                            });
-                        } else {
-                            showAlert(Alert.AlertType.INFORMATION, "Success", 
-                                     "Your status has been updated to " + newStatus);
-                        }
-                    } 
-                    // If status changed to Off Duty or Busy, set bookings to delayed
-                    else if ("Off Duty".equalsIgnoreCase(newStatus) || "Busy".equalsIgnoreCase(newStatus)) {
+                    // If status changed to Off Duty, set bookings to delayed
+                    if ("Off Duty".equalsIgnoreCase(newStatus)) {
                         int delayedCount = bookingService.setBookingsToDelayedForMechanic(currentMechanic.getId());
                         if (delayedCount > 0) {
                             Platform.runLater(() -> {
@@ -192,9 +211,6 @@ public class MechanicProfileController {
                             showAlert(Alert.AlertType.INFORMATION, "Success", 
                                      "Your status has been updated to " + newStatus);
                         }
-                    } else {
-                        showAlert(Alert.AlertType.INFORMATION, "Success", 
-                                 "Your status has been updated to " + newStatus);
                     }
                     
                     loadJobStatistics(); // Refresh the job counts

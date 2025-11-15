@@ -124,7 +124,27 @@ public class MechanicService {
         return null;
     }
     
+    public boolean isUserAlreadyMechanic(int userId) throws SQLException {
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                "SELECT COUNT(*) FROM mechanics WHERE user_id = ?")) {
+            
+            stmt.setInt(1, userId);
+            ResultSet rs = stmt.executeQuery();
+            
+            if (rs.next()) {
+                return rs.getInt(1) > 0;
+            }
+            return false;
+        }
+    }
+    
     public boolean addMechanic(int userId, String name, String specialties) throws SQLException {
+        // Check if user is already assigned as mechanic
+        if (isUserAlreadyMechanic(userId)) {
+            throw new SQLException("This user is already assigned as a mechanic.");
+        }
+        
         try (Connection conn = DatabaseUtil.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
                 "INSERT INTO mechanics (user_id, specialties, hex_id) VALUES (?, ?, ?)")) {
@@ -398,6 +418,7 @@ public class MechanicService {
                 "JOIN vehicles v ON sb.vehicle_id = v.id " +
                 "JOIN customers c ON sb.customer_id = c.id " +
                 "WHERE sb.mechanic_id = ? " +
+                "AND sb.status != 'cancelled' " +
                 "ORDER BY sb.booking_date DESC")) {
             
             stmt.setInt(1, mechanicId);

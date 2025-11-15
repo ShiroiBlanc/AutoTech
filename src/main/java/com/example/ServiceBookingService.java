@@ -4,6 +4,8 @@ import java.sql.*;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 public class ServiceBookingService {
     private ServiceBookingViewModel createViewModel(ResultSet rs) throws SQLException {
@@ -56,8 +58,8 @@ public class ServiceBookingService {
                       "WHERE id = ?";
             } else {
                 sql = "INSERT INTO service_bookings (customer_id, vehicle_id, mechanic_id, " +
-                      "booking_date, booking_time, service_type, service_description, status, hex_id) " +
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                      "booking_date, booking_time, service_type, service_description, status, original_status, hex_id) " +
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             }
             
             try (PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -74,6 +76,7 @@ public class ServiceBookingService {
                 if (booking.getId() > 0) {
                     stmt.setInt(param, booking.getId());
                 } else {
+                    stmt.setString(param++, booking.getStatus());  // original_status = status on creation
                     stmt.setString(param, HexIdGenerator.generateBookingId());
                 }
                 
@@ -90,6 +93,30 @@ public class ServiceBookingService {
                 return rowsAffected > 0;
             }
         }
+    }
+    
+    public ServiceBookingViewModel getBookingById(int bookingId) throws SQLException {
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                "SELECT sb.*, c.name as customer_name, " +
+                "CONCAT(v.brand, ' ', v.model, ' (', v.plate_number, ')') as vehicle_info, " +
+                "u.username as mechanic_name " +
+                "FROM service_bookings sb " +
+                "JOIN customers c ON sb.customer_id = c.id " +
+                "JOIN vehicles v ON sb.vehicle_id = v.id " +
+                "LEFT JOIN mechanics m ON sb.mechanic_id = m.id " +
+                "LEFT JOIN users u ON m.user_id = u.id " +
+                "WHERE sb.id = ?")) {
+            
+            stmt.setInt(1, bookingId);
+            ResultSet rs = stmt.executeQuery();
+            
+            if (rs.next()) {
+                return createViewModel(rs);
+            }
+        }
+        
+        return null;
     }
     
     public List<ServiceBookingViewModel> getAllBookings() throws SQLException {
@@ -411,8 +438,23 @@ public class ServiceBookingService {
                 String availability = rs.getString("availability");
                 if ("Off Duty".equalsIgnoreCase(availability)) {
                     mechanicOffDuty = true;
-                } else if ("Overloaded".equalsIgnoreCase(availability)) {
+                }
+            }
+            rs.close();
+            checkStmt.close();
+            
+            // Check actual job count to determine if overloaded (5+ jobs)
+            checkStmt = conn.prepareStatement(
+                "SELECT COUNT(*) as job_count FROM service_bookings " +
+                "WHERE mechanic_id = ? AND status IN ('scheduled', 'in_progress')");
+            checkStmt.setInt(1, mechanicId);
+            rs = checkStmt.executeQuery();
+            
+            if (rs.next()) {
+                int jobCount = rs.getInt("job_count");
+                if (jobCount >= 5) {
                     mechanicOverloaded = true;
+                    System.out.println("⚠ Mechanic #" + mechanicId + " has " + jobCount + " active jobs (overloaded). Booking will be delayed.");
                 }
             }
             rs.close();
@@ -420,10 +462,6 @@ public class ServiceBookingService {
             
             // Set status to "delayed" if insufficient parts OR mechanic is off duty OR mechanic is overloaded
             String finalStatus = (hasInsufficientParts || mechanicOffDuty || mechanicOverloaded) ? "delayed" : status;
-            
-            if (mechanicOverloaded) {
-                System.out.println("⚠ Mechanic #" + mechanicId + " is overloaded (5+ jobs). Booking will be set to delayed.");
-            }
             
             // Create the booking
             stmt = conn.prepareStatement(
@@ -540,24 +578,35 @@ public class ServiceBookingService {
     }
     
     public boolean updateBookingStatus(int bookingId, String newStatus) throws SQLException {
-        // Get mechanic ID before updating status
+        // Get current status and mechanic ID before updating
+        String currentStatus = "";
+        String originalStatus = "";
         int mechanicId = -1;
         try (Connection conn = DatabaseUtil.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
-                "SELECT mechanic_id FROM service_bookings WHERE id = ?")) {
+                "SELECT mechanic_id, status, original_status FROM service_bookings WHERE id = ?")) {
             stmt.setInt(1, bookingId);
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
                 mechanicId = rs.getInt("mechanic_id");
+                currentStatus = rs.getString("status");
+                originalStatus = rs.getString("original_status");
             }
+        }
+        
+        // When changing from delayed to scheduled/completed/cancelled, preserve the original_status if it was delayed
+        String statusToSave = originalStatus;
+        if ("delayed".equalsIgnoreCase(currentStatus) && !originalStatus.equalsIgnoreCase("delayed")) {
+            statusToSave = currentStatus; // Save the delayed status as the original
         }
         
         try (Connection conn = DatabaseUtil.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
-                "UPDATE service_bookings SET status = ? WHERE id = ?")) {
+                "UPDATE service_bookings SET status = ?, original_status = ? WHERE id = ?")) {
             
             stmt.setString(1, newStatus);
-            stmt.setInt(2, bookingId);
+            stmt.setString(2, statusToSave);
+            stmt.setInt(3, bookingId);
             
             int rowsAffected = stmt.executeUpdate();
             
@@ -565,6 +614,10 @@ public class ServiceBookingService {
             if (rowsAffected > 0 && "completed".equalsIgnoreCase(newStatus)) {
                 try {
                     deductPartsFromInventory(bookingId);
+                    
+                    // Trigger inventory check for low stock and expiration alerts
+                    System.out.println("Booking completed - triggering inventory check...");
+                    InventoryService.getInstance().checkAndSendLowStockAlert();
                 } catch (SQLException e) {
                     // Log the error but don't fail the status update
                     System.err.println("Warning: Could not deduct parts from inventory: " + e.getMessage());
@@ -579,7 +632,7 @@ public class ServiceBookingService {
                     
                     // If a job completed or cancelled, check if delayed bookings can proceed
                     if ("completed".equalsIgnoreCase(newStatus) || "cancelled".equalsIgnoreCase(newStatus)) {
-                        checkAndUpdateDelayedBookingsForMechanic(mechanicId);
+                        checkAndUpdateDelayedBookingsForMechanic(mechanicId, bookingId);  // Pass the booking ID that triggered this
                     }
                 } catch (SQLException e) {
                     System.err.println("Warning: Could not update mechanic availability: " + e.getMessage());
@@ -898,6 +951,10 @@ public class ServiceBookingService {
      * Called when mechanic finishes/cancels a job and may now have capacity
      */
     public int checkAndUpdateDelayedBookingsForMechanic(int mechanicId) throws SQLException {
+        return checkAndUpdateDelayedBookingsForMechanic(mechanicId, -1);  // -1 means no specific triggering booking
+    }
+    
+    public int checkAndUpdateDelayedBookingsForMechanic(int mechanicId, int triggeringBookingId) throws SQLException {
         int updatedCount = 0;
         MechanicService mechanicService = new MechanicService();
         
@@ -908,16 +965,23 @@ public class ServiceBookingService {
         }
         
         try (Connection conn = DatabaseUtil.getConnection()) {
-            // Get delayed bookings for this mechanic only
-            String query = "SELECT id FROM service_bookings WHERE mechanic_id = ? AND status = 'delayed'";
+            // Get delayed bookings for this mechanic only, ordered by booking date/time (earliest first)
+            String query = "SELECT id FROM service_bookings WHERE mechanic_id = ? AND status = 'delayed' " +
+                          "ORDER BY booking_date ASC, booking_time ASC";
             
-            System.out.println("=== Checking delayed bookings for mechanic #" + mechanicId + " ===");
+            System.out.println("=== Checking delayed bookings for mechanic #" + mechanicId + " (triggered by booking #" + triggeringBookingId + ") ===");
             
             try (PreparedStatement stmt = conn.prepareStatement(query)) {
                 stmt.setInt(1, mechanicId);
                 ResultSet rs = stmt.executeQuery();
                 
                 while (rs.next()) {
+                    // Re-check capacity before each booking (in case we've scheduled some already)
+                    if (!mechanicService.canAcceptNewBooking(mechanicId)) {
+                        System.out.println("Mechanic #" + mechanicId + " reached capacity (5+ jobs), stopping delayed booking updates");
+                        break;
+                    }
+                    
                     int bookingId = rs.getInt("id");
                     
                     System.out.println("\n--- Checking delayed booking #" + bookingId + " ---");
@@ -978,15 +1042,48 @@ public class ServiceBookingService {
                     // If parts are available AND mechanic can accept, update to scheduled
                     if (partsAvailable) {
                         System.out.println("  ✓ Parts available and mechanic has capacity - Updating to scheduled");
-                        String updateQuery = "UPDATE service_bookings SET status = 'scheduled' WHERE id = ?";
-                        try (PreparedStatement updateStmt = conn.prepareStatement(updateQuery)) {
-                            updateStmt.setInt(1, bookingId);
-                            int updated = updateStmt.executeUpdate();
-                            if (updated > 0) {
-                                updatedCount++;
-                                System.out.println("  ✓ SUCCESS: Auto-updated booking #" + bookingId + " from delayed to scheduled");
-                            } else {
-                                System.out.println("  ✗ FAILED: Could not update booking #" + bookingId);
+                        // Mark this booking as promoted by the triggering booking (so we can revert it if the triggering booking is undone)
+                        // If triggeringBookingId is -1, don't track it (manual promotion from controller)
+                        // If column doesn't exist, just update status without the tracking
+                        try {
+                            String updateQuery = "UPDATE service_bookings SET status = 'scheduled'" + 
+                                               (triggeringBookingId > 0 ? ", promoted_by_booking_id = ?" : "") + 
+                                               " WHERE id = ?";
+                            try (PreparedStatement updateStmt = conn.prepareStatement(updateQuery)) {
+                                if (triggeringBookingId > 0) {
+                                    updateStmt.setInt(1, triggeringBookingId);  // Store which booking caused this promotion
+                                    updateStmt.setInt(2, bookingId);
+                                } else {
+                                    updateStmt.setInt(1, bookingId);
+                                }
+                                int updated = updateStmt.executeUpdate();
+                                if (updated > 0) {
+                                    updatedCount++;
+                                    if (triggeringBookingId > 0) {
+                                        System.out.println("  ✓ SUCCESS: Auto-updated booking #" + bookingId + " from delayed to scheduled (promoted by booking #" + triggeringBookingId + ")");
+                                    } else {
+                                        System.out.println("  ✓ SUCCESS: Auto-updated booking #" + bookingId + " from delayed to scheduled");
+                                    }
+                                    
+                                    // Update mechanic availability after each scheduled booking
+                                    mechanicService.updateMechanicAvailability(mechanicId);
+                                } else {
+                                    System.out.println("  ✗ FAILED: Could not update booking #" + bookingId);
+                                }
+                            }
+                        } catch (SQLException e) {
+                            // Column might not exist or other error - try simpler update
+                            try (PreparedStatement updateStmt = conn.prepareStatement(
+                                "UPDATE service_bookings SET status = 'scheduled' WHERE id = ?")) {
+                                updateStmt.setInt(1, bookingId);
+                                int updated = updateStmt.executeUpdate();
+                                if (updated > 0) {
+                                    updatedCount++;
+                                    System.out.println("  ✓ SUCCESS: Auto-updated booking #" + bookingId + " from delayed to scheduled");
+                                    mechanicService.updateMechanicAvailability(mechanicId);
+                                } else {
+                                    System.out.println("  ✗ FAILED: Could not update booking #" + bookingId);
+                                }
                             }
                         }
                     } else {
@@ -999,5 +1096,242 @@ public class ServiceBookingService {
         }
         
         return updatedCount;
+    }
+    
+    /**
+     * Undo a booking status change back to its original status.
+     * If a booking was originally delayed and was changed to completed/cancelled,
+     * this will revert it back to delayed.
+     * Also finds any bookings that were promoted FROM delayed TO scheduled because of this booking,
+     * and reverts them back to delayed.
+     */
+    public boolean undoBookingStatusChange(int bookingId) throws SQLException {
+        String originalStatus = "";
+        int mechanicId = -1;
+        List<BookingPart> undoingBookingParts = new ArrayList<>();
+        
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                "SELECT mechanic_id, original_status FROM service_bookings WHERE id = ?")) {
+            stmt.setInt(1, bookingId);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                mechanicId = rs.getInt("mechanic_id");
+                originalStatus = rs.getString("original_status");
+            }
+        }
+        
+        if (originalStatus.isEmpty()) {
+            return false;
+        }
+        
+        // Get all parts from this booking to find related bookings
+        undoingBookingParts = getBookingParts(bookingId);
+        
+        // Find all scheduled bookings that were promoted by this booking
+        // Use TWO approaches:
+        // 1. Primary: Look for promoted_by_booking_id (new tracking method)
+        // 2. Fallback: Look for bookings with same parts that have original_status='delayed' (for existing data)
+        
+        List<Integer> affectedBookingIds = new ArrayList<>();
+        
+        // Approach 1: Direct tracking via promoted_by_booking_id (if column exists)
+        try {
+            try (Connection conn = DatabaseUtil.getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(
+                    "SELECT id FROM service_bookings WHERE status = 'scheduled' AND promoted_by_booking_id = ?")) {
+                stmt.setInt(1, bookingId);
+                ResultSet rs = stmt.executeQuery();
+                while (rs.next()) {
+                    affectedBookingIds.add(rs.getInt("id"));
+                }
+                System.out.println("Found " + affectedBookingIds.size() + " bookings with direct promoted_by_booking_id tracking");
+            }
+        } catch (SQLException e) {
+            // Column doesn't exist in older databases - use fallback method
+            System.out.println("Note: promoted_by_booking_id column not available, using fallback method");
+        }
+        
+        // Approach 2: Fallback for existing bookings without promoted_by_booking_id set
+        // This handles bookings that were promoted before this feature was implemented
+        if (!undoingBookingParts.isEmpty() && affectedBookingIds.isEmpty()) {
+            try (Connection conn = DatabaseUtil.getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(
+                    "SELECT DISTINCT sb.id FROM service_bookings sb " +
+                    "INNER JOIN booking_parts bp ON sb.id = bp.booking_id " +
+                    "WHERE sb.status = 'scheduled' " +
+                    "AND sb.original_status = 'delayed' " +
+                    "AND bp.part_id IN (" + String.join(",", 
+                        undoingBookingParts.stream().map(p -> "?").collect(java.util.stream.Collectors.toList())) + ") " +
+                    "AND sb.id != ? " +
+                    "AND sb.mechanic_id = ?")) {  // Same mechanic to avoid false positives
+                
+                int paramIndex = 1;
+                for (BookingPart part : undoingBookingParts) {
+                    stmt.setInt(paramIndex++, part.getPartId());
+                }
+                stmt.setInt(paramIndex++, bookingId);
+                stmt.setInt(paramIndex, mechanicId);
+                
+                ResultSet rs = stmt.executeQuery();
+                while (rs.next()) {
+                    affectedBookingIds.add(rs.getInt("id"));
+                }
+                System.out.println("Found " + affectedBookingIds.size() + " legacy bookings (fallback method)");
+            }
+        }
+        
+        boolean success = false;
+        try (Connection conn = DatabaseUtil.getConnection()) {
+            // Revert the main booking back to original status
+            // Try to clear promoted_by_booking_id if column exists
+            try (PreparedStatement stmt = conn.prepareStatement(
+                "UPDATE service_bookings SET status = ?, promoted_by_booking_id = NULL WHERE id = ?")) {
+                stmt.setString(1, originalStatus);
+                stmt.setInt(2, bookingId);
+                success = stmt.executeUpdate() > 0;
+            } catch (SQLException e) {
+                // Column doesn't exist, try without it
+                try (PreparedStatement stmt = conn.prepareStatement(
+                    "UPDATE service_bookings SET status = ? WHERE id = ?")) {
+                    stmt.setString(1, originalStatus);
+                    stmt.setInt(2, bookingId);
+                    success = stmt.executeUpdate() > 0;
+                }
+            }
+            System.out.println("Reverted booking #" + bookingId + " back to " + originalStatus);
+            
+            // Revert affected bookings back to delayed status
+            if (!affectedBookingIds.isEmpty()) {
+                try (PreparedStatement revertStmt = conn.prepareStatement(
+                    "UPDATE service_bookings SET status = 'delayed', promoted_by_booking_id = NULL WHERE id = ?")) {
+                    for (Integer affectedId : affectedBookingIds) {
+                        revertStmt.setInt(1, affectedId);
+                        int reverted = revertStmt.executeUpdate();
+                        if (reverted > 0) {
+                            System.out.println("✓ Reverted booking #" + affectedId + " from scheduled back to delayed (was promoted by booking #" + bookingId + ")");
+                        }
+                    }
+                } catch (SQLException e) {
+                    // Column doesn't exist, try without it
+                    try (PreparedStatement revertStmt = conn.prepareStatement(
+                        "UPDATE service_bookings SET status = 'delayed' WHERE id = ?")) {
+                        for (Integer affectedId : affectedBookingIds) {
+                            revertStmt.setInt(1, affectedId);
+                            int reverted = revertStmt.executeUpdate();
+                            if (reverted > 0) {
+                                System.out.println("✓ Reverted booking #" + affectedId + " from scheduled back to delayed (was promoted by booking #" + bookingId + ")");
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Update mechanic availability
+            if (success && mechanicId > 0) {
+                try {
+                    MechanicService mechanicService = new MechanicService();
+                    mechanicService.updateMechanicAvailability(mechanicId);
+                } catch (SQLException e) {
+                    System.err.println("Warning: Could not update mechanic availability: " + e.getMessage());
+                }
+            }
+        }
+        
+        return success;
+    }
+    
+    /**
+     * Add a service to a booking (supports multiple services per booking)
+     */
+    public boolean addServiceToBooking(int bookingId, String serviceType, String serviceDescription) throws SQLException {
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                "INSERT INTO booking_services (booking_id, service_type, service_description) VALUES (?, ?, ?)")) {
+            stmt.setInt(1, bookingId);
+            stmt.setString(2, serviceType);
+            stmt.setString(3, serviceDescription);
+            return stmt.executeUpdate() > 0;
+        }
+    }
+    
+    /**
+     * Get all services for a booking
+     */
+    public List<Map<String, String>> getBookingServices(int bookingId) throws SQLException {
+        List<Map<String, String>> services = new ArrayList<>();
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                "SELECT id, service_type, service_description FROM booking_services WHERE booking_id = ? ORDER BY created_at ASC")) {
+            stmt.setInt(1, bookingId);
+            ResultSet rs = stmt.executeQuery();
+            
+            while (rs.next()) {
+                Map<String, String> service = new HashMap<>();
+                service.put("id", String.valueOf(rs.getInt("id")));
+                service.put("type", rs.getString("service_type"));
+                service.put("description", rs.getString("service_description"));
+                services.add(service);
+            }
+        }
+        return services;
+    }
+    
+    /**
+     * Remove a service from a booking
+     */
+    public boolean removeServiceFromBooking(int serviceId) throws SQLException {
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                "DELETE FROM booking_services WHERE id = ?")) {
+            stmt.setInt(1, serviceId);
+            return stmt.executeUpdate() > 0;
+        }
+    }
+    
+    /**
+     * Check booking parts for expiration and alert if needed
+     */
+    public List<String> checkBookingPartsExpiration(int bookingId) throws SQLException {
+        List<String> expiringItems = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+        LocalDate alertDate = today.plusDays(30);  // Alert 30 days before expiration
+        
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                "SELECT p.id, p.name, p.expiration_date FROM booking_parts bp " +
+                "INNER JOIN parts p ON bp.part_id = p.id " +
+                "WHERE bp.booking_id = ? AND p.expiration_date IS NOT NULL")) {
+            stmt.setInt(1, bookingId);
+            ResultSet rs = stmt.executeQuery();
+            
+            while (rs.next()) {
+                String partName = rs.getString("name");
+                Date expirationDate = rs.getDate("expiration_date");
+                
+                if (expirationDate != null) {
+                    LocalDate expDate = expirationDate.toLocalDate();
+                    
+                    if (today.isAfter(expDate)) {
+                        expiringItems.add("❌ EXPIRED: " + partName + " (expired on " + expDate + ")");
+                    } else if (today.isBefore(alertDate) && today.isBefore(expDate) || today.equals(expDate)) {
+                        expiringItems.add("⚠️ EXPIRING SOON: " + partName + " (expires on " + expDate + ")");
+                    }
+                }
+            }
+        }
+        return expiringItems;
+    }
+    
+    /**
+     * Delete all services for a booking (used when editing)
+     */
+    public void deleteBookingServices(int bookingId) throws SQLException {
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                "DELETE FROM booking_services WHERE booking_id = ?")) {
+            stmt.setInt(1, bookingId);
+            stmt.executeUpdate();
+        }
     }
 }

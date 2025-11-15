@@ -93,8 +93,24 @@ public class BillingService {
                 return false; // Bill already exists for this service
             }
             
-            // Calculate amount based on service type
-            double amount = calculateAmountByServiceType(serviceType);
+            // Calculate service charge based on service type
+            double serviceCharge = calculateAmountByServiceType(serviceType);
+            
+            // Get parts used in this booking and calculate parts cost
+            double partsCost = 0.0;
+            PreparedStatement partsStmt = conn.prepareStatement(
+                "SELECT SUM(quantity * price_at_time) as total_parts_cost " +
+                "FROM booking_parts WHERE booking_id = ?");
+            partsStmt.setInt(1, serviceBookingId);
+            ResultSet partsRs = partsStmt.executeQuery();
+            if (partsRs.next()) {
+                partsCost = partsRs.getDouble("total_parts_cost");
+            }
+            partsRs.close();
+            partsStmt.close();
+            
+            // Total amount = service charge + parts cost
+            double totalAmount = serviceCharge + partsCost;
             
             // Create the bill
             insertStmt = conn.prepareStatement(
@@ -103,7 +119,7 @@ public class BillingService {
                 
             insertStmt.setInt(1, customerId);
             insertStmt.setInt(2, serviceBookingId);
-            insertStmt.setDouble(3, amount);
+            insertStmt.setDouble(3, totalAmount);
             insertStmt.setString(4, HexIdGenerator.generateBillId());
             
             int rowsAffected = insertStmt.executeUpdate();
@@ -147,6 +163,38 @@ public class BillingService {
         }
     }
     
+    public Bill getBillByServiceId(int serviceId) throws SQLException {
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                "SELECT b.*, c.name as customer_name, " +
+                "CONCAT(v.brand, ' ', v.model, ' (', v.plate_number, ')') as vehicle_info " +
+                "FROM billing b " +
+                "JOIN customers c ON b.customer_id = c.id " +
+                "JOIN service_bookings s ON b.service_id = s.id " +
+                "JOIN vehicles v ON s.vehicle_id = v.id " +
+                "WHERE b.service_id = ?")) {
+            
+            stmt.setInt(1, serviceId);
+            ResultSet rs = stmt.executeQuery();
+            
+            if (rs.next()) {
+                int id = rs.getInt("id");
+                String hexId = rs.getString("hex_id");
+                int customerId = rs.getInt("customer_id");
+                int svcId = rs.getInt("service_id");
+                String customerName = rs.getString("customer_name");
+                String vehicleInfo = rs.getString("vehicle_info");
+                double amount = rs.getDouble("amount");
+                String paymentStatus = rs.getString("payment_status");
+                LocalDate billDate = rs.getDate("bill_date").toLocalDate();
+                
+                return new Bill(id, hexId, customerId, svcId, customerName, vehicleInfo, 
+                              amount, paymentStatus, billDate);
+            }
+        }
+        return null;
+    }
+    
     public boolean updateBillStatus(int billId, String status) throws SQLException {
         try (Connection conn = DatabaseUtil.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
@@ -154,6 +202,21 @@ public class BillingService {
             
             stmt.setString(1, status);
             stmt.setInt(2, billId);
+            
+            int rowsAffected = stmt.executeUpdate();
+            return rowsAffected > 0;
+        }
+    }
+    
+    public boolean updateBillPayment(int billId, String status, String paymentMethod, String referenceNumber) throws SQLException {
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                "UPDATE billing SET payment_status = ?, payment_method = ?, reference_number = ? WHERE id = ?")) {
+            
+            stmt.setString(1, status);
+            stmt.setString(2, paymentMethod);
+            stmt.setString(3, referenceNumber);
+            stmt.setInt(4, billId);
             
             int rowsAffected = stmt.executeUpdate();
             return rowsAffected > 0;

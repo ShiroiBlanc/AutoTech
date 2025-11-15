@@ -23,6 +23,7 @@ public class HomeController {
     @FXML private Label roleLabel;
     @FXML private VBox notificationsContainer;
     @FXML private Label notificationCountLabel;
+    @FXML private javafx.scene.control.Button timeInButton;
     
     // Statistics labels
     @FXML private Label totalCustomersLabel;
@@ -57,6 +58,14 @@ public class HomeController {
             
             // Load notifications
             loadNotifications();
+            
+            // Show/hide Time In button based on role
+            if (currentUser.getRole() == User.UserRole.MECHANIC) {
+                setupTimeInButton();
+            } else if (timeInButton != null) {
+                timeInButton.setVisible(false);
+                timeInButton.setManaged(false);
+            }
         } else {
             welcomeLabel.setText("Hello, Guest!");
             roleLabel.setText("Role: Unknown");
@@ -99,30 +108,85 @@ public class HomeController {
     
     private void loadStatistics() {
         try {
-            // Load customer count
-            CustomerService customerService = CustomerService.getInstance();
-            List<Customer> customers = customerService.getAllCustomers();
-            totalCustomersLabel.setText(String.valueOf(customers.size()));
-            
-            // Load booking statistics
             ServiceBookingService bookingService = new ServiceBookingService();
-            List<ServiceBookingViewModel> allBookings = bookingService.getAllBookings();
-            totalBookingsLabel.setText(String.valueOf(allBookings.size()));
             
-            // Count pending bookings
-            long pendingCount = allBookings.stream()
-                .filter(b -> "scheduled".equalsIgnoreCase(b.getStatus()) || 
-                            "in_progress".equalsIgnoreCase(b.getStatus()))
-                .count();
-            pendingBookingsLabel.setText(String.valueOf(pendingCount));
-            
-            // Load low stock items
-            InventoryService inventoryService = InventoryService.getInstance();
-            List<InventoryItem> items = inventoryService.getAllItems();
-            long lowStockCount = items.stream()
-                .filter(item -> item.getQuantity() <= item.getMinimumStock())
-                .count();
-            lowStockItemsLabel.setText(String.valueOf(lowStockCount));
+            // Role-specific statistics
+            if (currentUser.getRole() == User.UserRole.ADMIN) {
+                // Admin sees everything
+                CustomerService customerService = CustomerService.getInstance();
+                List<Customer> customers = customerService.getAllCustomers();
+                totalCustomersLabel.setText(String.valueOf(customers.size()));
+                
+                List<ServiceBookingViewModel> allBookings = bookingService.getAllBookings();
+                totalBookingsLabel.setText(String.valueOf(allBookings.size()));
+                
+                long pendingCount = allBookings.stream()
+                    .filter(b -> "scheduled".equalsIgnoreCase(b.getStatus()) || 
+                                "in_progress".equalsIgnoreCase(b.getStatus()))
+                    .count();
+                pendingBookingsLabel.setText(String.valueOf(pendingCount));
+                
+                InventoryService inventoryService = InventoryService.getInstance();
+                List<InventoryItem> items = inventoryService.getAllItems();
+                long lowStockCount = items.stream()
+                    .filter(item -> item.getQuantity() <= item.getMinimumStock())
+                    .count();
+                lowStockItemsLabel.setText(String.valueOf(lowStockCount));
+                
+            } else if (currentUser.getRole() == User.UserRole.MECHANIC) {
+                // Mechanic sees only their own job-related stats
+                MechanicService mechanicService = new MechanicService();
+                Mechanic mechanic = mechanicService.getMechanicByUserId(currentUser.getId());
+                
+                if (mechanic != null) {
+                    List<ServiceBookingViewModel> myBookings = bookingService.getBookingsForMechanic(mechanic.getId());
+                    
+                    // Hide customer count (not relevant)
+                    totalCustomersLabel.setText("N/A");
+                    
+                    // Show only their bookings
+                    totalBookingsLabel.setText(String.valueOf(myBookings.size()));
+                    
+                    // Show their pending bookings
+                    long myPendingCount = myBookings.stream()
+                        .filter(b -> "scheduled".equalsIgnoreCase(b.getStatus()) || 
+                                    "in_progress".equalsIgnoreCase(b.getStatus()))
+                        .count();
+                    pendingBookingsLabel.setText(String.valueOf(myPendingCount));
+                    
+                    // Show low stock items (relevant for their work)
+                    InventoryService inventoryService = InventoryService.getInstance();
+                    List<InventoryItem> items = inventoryService.getAllItems();
+                    long lowStockCount = items.stream()
+                        .filter(item -> item.getQuantity() <= item.getMinimumStock())
+                        .count();
+                    lowStockItemsLabel.setText(String.valueOf(lowStockCount));
+                }
+                
+            } else if (currentUser.getRole() == User.UserRole.CASHIER) {
+                // Cashier sees billing-related stats
+                CustomerService customerService = CustomerService.getInstance();
+                List<Customer> customers = customerService.getAllCustomers();
+                totalCustomersLabel.setText(String.valueOf(customers.size()));
+                
+                // Show completed bookings (potential bills)
+                List<ServiceBookingViewModel> allBookings = bookingService.getAllBookings();
+                long completedCount = allBookings.stream()
+                    .filter(b -> "completed".equalsIgnoreCase(b.getStatus()))
+                    .count();
+                totalBookingsLabel.setText(String.valueOf(completedCount));
+                
+                // Show unpaid bills count
+                BillingService billingService = BillingService.getInstance();
+                List<Bill> bills = billingService.getAllBills();
+                long unpaidCount = bills.stream()
+                    .filter(b -> "Unpaid".equalsIgnoreCase(b.getPaymentStatus()))
+                    .count();
+                pendingBookingsLabel.setText(String.valueOf(unpaidCount));
+                
+                // Hide inventory (not relevant)
+                lowStockItemsLabel.setText("N/A");
+            }
             
         } catch (SQLException e) {
             System.err.println("Error loading statistics: " + e.getMessage());
@@ -135,12 +199,54 @@ public class HomeController {
         int notificationCount = 0;
         
         try {
-            // Notification 1: Low stock items (actual quantity)
+            ServiceBookingService bookingService = new ServiceBookingService();
             InventoryService inventoryService = InventoryService.getInstance();
-            List<InventoryItem> items = inventoryService.getAllItems();
-            List<InventoryItem> lowStockItems = items.stream()
-                .filter(item -> item.getQuantity() <= item.getMinimumStock())
-                .toList();
+            
+            // Role-specific notifications
+            if (currentUser.getRole() == User.UserRole.ADMIN) {
+                // Admin sees all notifications
+                notificationCount = loadAdminNotifications(notificationCount, bookingService, inventoryService);
+                
+            } else if (currentUser.getRole() == User.UserRole.MECHANIC) {
+                // Mechanic sees only job-related notifications
+                notificationCount = loadMechanicNotifications(notificationCount, bookingService, inventoryService);
+                
+            } else if (currentUser.getRole() == User.UserRole.CASHIER) {
+                // Cashier sees billing and customer-related notifications
+                notificationCount = loadCashierNotifications(notificationCount);
+            }
+            
+            // If no notifications, show a friendly message
+            if (notificationCount == 0) {
+                addNotification(
+                    "All Clear!", 
+                    "No urgent notifications at the moment. Everything is running smoothly.",
+                    "success"
+                );
+                notificationCount = 1;
+            }
+            
+            notificationCountLabel.setText(String.valueOf(notificationCount));
+            
+        } catch (SQLException e) {
+            System.err.println("Error loading notifications: " + e.getMessage());
+            e.printStackTrace();
+            addNotification(
+                "Error", 
+                "Could not load some notifications. Please check the system.",
+                "error"
+            );
+        }
+    }
+    
+    private int loadAdminNotifications(int notificationCount, ServiceBookingService bookingService, 
+                                      InventoryService inventoryService) throws SQLException {
+        List<InventoryItem> items = inventoryService.getAllItems();
+        
+        // Notification 1: Low stock items (actual quantity)
+        List<InventoryItem> lowStockItems = items.stream()
+            .filter(item -> item.getQuantity() <= item.getMinimumStock())
+            .toList();
             
             if (!lowStockItems.isEmpty()) {
                 for (InventoryItem item : lowStockItems) {
@@ -203,7 +309,6 @@ public class HomeController {
             }
             
             // Notification 4: Delayed bookings with details
-            ServiceBookingService bookingService = new ServiceBookingService();
             List<ServiceBookingViewModel> bookings = bookingService.getAllBookings();
             List<ServiceBookingViewModel> delayedBookings = bookings.stream()
                 .filter(b -> "delayed".equalsIgnoreCase(b.getStatus()))
@@ -297,46 +402,147 @@ public class HomeController {
                 notificationCount++;
             }
             
-            // Notification 6: Overdue bills (if cashier or admin)
-            if (currentUser.getRole() == User.UserRole.ADMIN || 
-                currentUser.getRole() == User.UserRole.CASHIER) {
-                BillingService billingService = BillingService.getInstance();
-                List<Bill> bills = billingService.getAllBills();
-                long overdueCount = bills.stream()
-                    .filter(b -> "Overdue".equalsIgnoreCase(b.getPaymentStatus()))
-                    .count();
-                
-                if (overdueCount > 0) {
-                    addNotification(
-                        "Overdue Payments", 
-                        overdueCount + " bill(s) are overdue. Please follow up with customers.",
-                        "error"
-                    );
-                    notificationCount++;
-                }
-            }
-            
-            // If no notifications, show a friendly message
-            if (notificationCount == 0) {
-                addNotification(
-                    "All Clear!", 
-                    "No urgent notifications at the moment. Everything is running smoothly.",
-                    "success"
-                );
-                notificationCount = 1;
-            }
-            
-            notificationCountLabel.setText(String.valueOf(notificationCount));
-            
-        } catch (SQLException e) {
-            System.err.println("Error loading notifications: " + e.getMessage());
-            e.printStackTrace();
+        // Notification 6: Overdue bills
+        BillingService billingService = BillingService.getInstance();
+        List<Bill> bills = billingService.getAllBills();
+        long overdueCount = bills.stream()
+            .filter(b -> "Overdue".equalsIgnoreCase(b.getPaymentStatus()))
+            .count();
+        
+        if (overdueCount > 0) {
             addNotification(
-                "Error", 
-                "Could not load some notifications. Please check the system.",
+                "Overdue Payments", 
+                overdueCount + " bill(s) are overdue. Please follow up with customers.",
                 "error"
             );
+            notificationCount++;
         }
+        
+        return notificationCount;
+    }
+    
+    private int loadMechanicNotifications(int notificationCount, ServiceBookingService bookingService,
+                                         InventoryService inventoryService) throws SQLException {
+        MechanicService mechanicService = new MechanicService();
+        Mechanic mechanic = mechanicService.getMechanicByUserId(currentUser.getId());
+        
+        if (mechanic == null) {
+            return notificationCount;
+        }
+        
+        List<ServiceBookingViewModel> myBookings = bookingService.getBookingsForMechanic(mechanic.getId());
+        
+        // Notification 1: My delayed bookings
+        List<ServiceBookingViewModel> myDelayedBookings = myBookings.stream()
+            .filter(b -> "delayed".equalsIgnoreCase(b.getStatus()))
+            .toList();
+        
+        if (!myDelayedBookings.isEmpty()) {
+            for (ServiceBookingViewModel booking : myDelayedBookings) {
+                addNotification(
+                    "Your Delayed Booking",
+                    "Booking #" + booking.getId() + " for " + booking.getCustomerName() + 
+                    " (" + booking.getVehicleInfo() + ") is delayed. Check parts availability.",
+                    "warning"
+                );
+                notificationCount++;
+            }
+        }
+        
+        // Notification 2: My bookings today
+        long myTodayCount = myBookings.stream()
+            .filter(b -> b.getDate().equals(java.time.LocalDate.now()) &&
+                        ("scheduled".equalsIgnoreCase(b.getStatus()) || 
+                         "in_progress".equalsIgnoreCase(b.getStatus())))
+            .count();
+        
+        if (myTodayCount > 0) {
+            addNotification(
+                "Today's Schedule", 
+                "You have " + myTodayCount + " service booking(s) scheduled for today.",
+                "info"
+            );
+            notificationCount++;
+        }
+        
+        // Notification 3: Low stock items (relevant for their work)
+        List<InventoryItem> items = inventoryService.getAllItems();
+        List<InventoryItem> lowStockItems = items.stream()
+            .filter(item -> item.getQuantity() <= item.getMinimumStock())
+            .limit(3) // Only show top 3 to avoid clutter
+            .toList();
+        
+        if (!lowStockItems.isEmpty()) {
+            for (InventoryItem item : lowStockItems) {
+                addNotification(
+                    "Low Stock Alert", 
+                    "Part '" + item.getName() + "' is running low. Inform admin if needed for your jobs.",
+                    "warning"
+                );
+                notificationCount++;
+            }
+        }
+        
+        return notificationCount;
+    }
+    
+    private int loadCashierNotifications(int notificationCount) throws SQLException {
+        BillingService billingService = BillingService.getInstance();
+        List<Bill> bills = billingService.getAllBills();
+        
+        // Notification 1: Unpaid bills
+        long unpaidCount = bills.stream()
+            .filter(b -> "Unpaid".equalsIgnoreCase(b.getPaymentStatus()))
+            .count();
+        
+        if (unpaidCount > 0) {
+            addNotification(
+                "Unpaid Bills", 
+                unpaidCount + " bill(s) are awaiting payment. Follow up with customers.",
+                "warning"
+            );
+            notificationCount++;
+        }
+        
+        // Notification 2: Overdue bills
+        long overdueCount = bills.stream()
+            .filter(b -> "Overdue".equalsIgnoreCase(b.getPaymentStatus()))
+            .count();
+        
+        if (overdueCount > 0) {
+            addNotification(
+                "Overdue Payments", 
+                overdueCount + " bill(s) are overdue. Urgent follow-up required.",
+                "error"
+            );
+            notificationCount++;
+        }
+        
+        // Notification 3: Completed bookings ready for billing
+        ServiceBookingService bookingService = new ServiceBookingService();
+        List<ServiceBookingViewModel> completedBookings = bookingService.getAllBookings().stream()
+            .filter(b -> "completed".equalsIgnoreCase(b.getStatus()))
+            .toList();
+        
+        // Check which completed bookings don't have bills yet
+        int readyForBilling = 0;
+        for (ServiceBookingViewModel booking : completedBookings) {
+            Bill bill = billingService.getBillByServiceId(booking.getId());
+            if (bill == null) {
+                readyForBilling++;
+            }
+        }
+        
+        if (readyForBilling > 0) {
+            addNotification(
+                "Ready for Billing", 
+                readyForBilling + " completed service(s) are ready for billing.",
+                "info"
+            );
+            notificationCount++;
+        }
+        
+        return notificationCount;
     }
     
     private void addNotification(String title, String message, String type) {
@@ -386,5 +592,113 @@ public class HomeController {
         updateDateTime();
         loadStatistics();
         loadNotifications();
+    }
+    
+    private void setupTimeInButton() {
+        if (timeInButton == null) {
+            return;
+        }
+        
+        try {
+            MechanicService mechanicService = new MechanicService();
+            Mechanic mechanic = mechanicService.getMechanicByUserId(currentUser.getId());
+            
+            if (mechanic != null) {
+                String status = mechanic.getAvailability();
+                
+                // Only show button if mechanic is Off Duty
+                if ("Off Duty".equalsIgnoreCase(status)) {
+                    timeInButton.setVisible(true);
+                    timeInButton.setManaged(true);
+                    timeInButton.setText("⏰ Time In");
+                    timeInButton.setStyle("-fx-background-color: #27ae60; -fx-text-fill: white; " +
+                                         "-fx-background-radius: 5; -fx-padding: 10 20; -fx-cursor: hand; " +
+                                         "-fx-font-size: 14px; -fx-font-weight: bold;");
+                } else {
+                    timeInButton.setVisible(false);
+                    timeInButton.setManaged(false);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+    
+    @FXML
+    private void handleTimeIn() {
+        try {
+            MechanicService mechanicService = new MechanicService();
+            Mechanic mechanic = mechanicService.getMechanicByUserId(currentUser.getId());
+            
+            if (mechanic == null) {
+                return;
+            }
+            
+            String currentStatus = mechanic.getAvailability();
+            
+            // Only allow time in if currently Off Duty
+            if (!"Off Duty".equalsIgnoreCase(currentStatus)) {
+                javafx.scene.control.Alert alert = new javafx.scene.control.Alert(
+                    javafx.scene.control.Alert.AlertType.WARNING);
+                alert.setTitle("Cannot Time In");
+                alert.setHeaderText(null);
+                alert.setContentText("You can only time in when you are Off Duty.\nCurrent status: " + currentStatus);
+                alert.showAndWait();
+                return;
+            }
+            
+            // Update status to Available
+            boolean success = mechanicService.updateMechanicStatus(mechanic.getId(), "Available");
+            
+            if (success) {
+                // Let the system recalculate based on actual job count
+                mechanicService.updateMechanicAvailability(mechanic.getId());
+                
+                // First, schedule THIS mechanic's own delayed bookings (up to capacity)
+                ServiceBookingService bookingService = new ServiceBookingService();
+                int myBookingsScheduled = bookingService.checkAndUpdateDelayedBookingsForMechanic(mechanic.getId());
+                
+                // Then check for other delayed bookings in the system
+                int otherBookingsScheduled = bookingService.checkAndUpdateDelayedBookings();
+                
+                int totalUpdated = myBookingsScheduled + otherBookingsScheduled;
+                
+                // Hide the Time In button
+                timeInButton.setVisible(false);
+                timeInButton.setManaged(false);
+                
+                // Show success message
+                javafx.scene.control.Alert alert = new javafx.scene.control.Alert(
+                    javafx.scene.control.Alert.AlertType.INFORMATION);
+                alert.setTitle("Status Updated");
+                alert.setHeaderText(null);
+                
+                String message = "✓ You are now Available for work!";
+                if (myBookingsScheduled > 0) {
+                    message += "\n\n✓ " + myBookingsScheduled + " of your delayed booking(s) scheduled.";
+                }
+                if (otherBookingsScheduled > 0) {
+                    message += "\n✓ " + otherBookingsScheduled + " other delayed booking(s) scheduled.";
+                }
+                if (totalUpdated == 0) {
+                    message += "\n\nNo delayed bookings to schedule at this time.";
+                }
+                
+                alert.setContentText(message);
+                alert.showAndWait();
+                
+                // Refresh the page
+                loadStatistics();
+                loadNotifications();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            javafx.scene.control.Alert alert = new javafx.scene.control.Alert(
+                javafx.scene.control.Alert.AlertType.ERROR);
+            alert.setTitle("Error");
+            alert.setHeaderText(null);
+            alert.setContentText("Failed to update status: " + e.getMessage());
+            alert.showAndWait();
+        }
     }
 }

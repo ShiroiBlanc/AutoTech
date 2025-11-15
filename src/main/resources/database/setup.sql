@@ -94,12 +94,13 @@ CREATE TABLE service_bookings (
     customer_id INT NOT NULL,
     vehicle_id INT NOT NULL,
     mechanic_id INT NOT NULL,
-    service_type VARCHAR(100) NOT NULL,
-    service_description TEXT,
     booking_date DATE NOT NULL,
     booking_time TIME NOT NULL,
     status VARCHAR(20) DEFAULT 'scheduled' 
         CHECK (status IN ('scheduled', 'delayed', 'in_progress', 'completed', 'cancelled')),
+    original_status VARCHAR(20) DEFAULT 'scheduled'
+        CHECK (original_status IN ('scheduled', 'delayed', 'in_progress', 'completed', 'cancelled')),
+    promoted_by_booking_id INT DEFAULT NULL,  -- Tracks which booking caused this one to be promoted from delayed to scheduled
     estimated_duration INT,  -- in minutes
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -114,10 +115,11 @@ CREATE TABLE services (
     booking_id INT,
     vehicle_id INT NOT NULL,
     service_date DATE NOT NULL,
+    service_type VARCHAR(100) NOT NULL,
+    description TEXT,
     status VARCHAR(20) NOT NULL DEFAULT 'pending' 
         CHECK (status IN ('pending', 'in_progress', 'completed', 'cancelled')),
     odometer INT,
-    description TEXT,
     technician_id INT,
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -125,6 +127,16 @@ CREATE TABLE services (
     FOREIGN KEY (booking_id) REFERENCES service_bookings(id) ON DELETE SET NULL,
     FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE,
     FOREIGN KEY (technician_id) REFERENCES mechanics(id)
+);
+
+-- Booking services junction table (multiple services per booking)
+CREATE TABLE IF NOT EXISTS booking_services (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    booking_id INT NOT NULL,
+    service_type VARCHAR(100) NOT NULL,
+    service_description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (booking_id) REFERENCES service_bookings(id) ON DELETE CASCADE
 );
 
 -- Service items table for labor
@@ -154,6 +166,7 @@ CREATE TABLE parts (
     unit VARCHAR(20) DEFAULT 'pieces',
     reorder_level INT DEFAULT 5,
     category VARCHAR(50),
+    location VARCHAR(100) DEFAULT 'Bodega',
     supplier VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -231,11 +244,31 @@ CREATE TABLE billing (
     amount DECIMAL(10,2) NOT NULL,
     payment_status VARCHAR(20) NOT NULL DEFAULT 'Unpaid'
         CHECK (payment_status IN ('Paid', 'Unpaid', 'Partial', 'Cancelled')),
+    payment_method VARCHAR(50) DEFAULT NULL
+        CHECK (payment_method IS NULL OR payment_method IN ('Cash', 'Bank Transfer', 'Online Payment')),
+    reference_number VARCHAR(100) DEFAULT NULL,
     bill_date DATE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE RESTRICT,
     FOREIGN KEY (service_id) REFERENCES service_bookings(id) ON DELETE RESTRICT
+);
+
+-- Create email sent history table
+CREATE TABLE email_sent_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    billing_id INT NOT NULL,
+    recipient_email VARCHAR(100) NOT NULL,
+    email_type VARCHAR(50) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    sent_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(20) DEFAULT 'sent' CHECK (status IN ('sent', 'failed', 'pending')),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (billing_id) REFERENCES billing(id) ON DELETE CASCADE,
+    INDEX idx_billing_id (billing_id),
+    INDEX idx_sent_date (sent_date),
+    INDEX idx_recipient_email (recipient_email)
 );
 
 -- Add indexes for the billing table
