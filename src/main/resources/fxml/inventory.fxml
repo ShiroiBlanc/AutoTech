@@ -19,25 +19,28 @@
             <HBox>
                 <Label fx:id="statusLabel" style="-fx-text-fill: green;"/>
                 <Region HBox.hgrow="ALWAYS" />
-                <Button text="Add New Item" onAction="#handleAddItem"/>
+                <Button fx:id="addItemButton" text="Add New Item" onAction="#handleAddItem"/>
             </HBox>
         </VBox>
     </top>
     
     <center>
-        <TableView fx:id="inventoryTable">
-            <columns>
-                <TableColumn fx:id="partNumberColumn" text="Part ID" prefWidth="120"/>
-                <TableColumn fx:id="nameColumn" text="Item Name" prefWidth="150"/>
-                <TableColumn fx:id="categoryColumn" text="Category" prefWidth="100"/> 
-                <TableColumn fx:id="quantityColumn" text="In Stock" prefWidth="70"/>
-                <TableColumn fx:id="reservedColumn" text="Reserved" prefWidth="70"/>
-                <TableColumn fx:id="availableColumn" text="Available" prefWidth="70"/>
-                <TableColumn fx:id="expirationColumn" text="Expiration" prefWidth="100"/>
-                <TableColumn fx:id="priceColumn" text="Price" prefWidth="80"/>
-                <TableColumn fx:id="locationColumn" text="Location" prefWidth="80"/>
-                <TableColumn fx:id="actionsColumn" text="Actions" prefWidth="150"/>
-            </columns>
-        </TableView>
+        <VBox>
+            <TableView fx:id="inventoryTable" VBox.vgrow="ALWAYS">
+                <columns>
+                    <TableColumn fx:id="partNumberColumn" text="Part ID" prefWidth="90"/>
+                    <TableColumn fx:id="nameColumn" text="Item Name" prefWidth="140"/>
+                    <TableColumn fx:id="categoryColumn" text="Category" prefWidth="85"/> 
+                    <TableColumn fx:id="quantityColumn" text="Stock" prefWidth="55"/>
+                    <TableColumn fx:id="reservedColumn" text="Reserved" prefWidth="65"/>
+                    <TableColumn fx:id="availableColumn" text="Available" prefWidth="70"/>
+                    <TableColumn fx:id="expirationColumn" text="Expiration" prefWidth="85"/>
+                    <TableColumn fx:id="priceColumn" text="Price" prefWidth="65"/>
+                    <TableColumn fx:id="locationColumn" text="Location" prefWidth="75"/>
+                    <TableColumn fx:id="actionsColumn" text="Actions" prefWidth="150"/>
+                </columns>
+            </TableView>
+            <Pagination fx:id="inventoryPagination" pageCount="1"/>
+        </VBox>
     </center>
 </BorderPane>

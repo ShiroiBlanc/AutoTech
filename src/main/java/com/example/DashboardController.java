@@ -182,7 +182,7 @@ public class DashboardController {
     @FXML
     private void showMyProfile() {
         setActiveButton(myProfileButton);
-        loadView("myprofile.fxml");
+        loadView("mechanic-profile.fxml");
     }
     
     private void setActiveButton(Button activeButton) {

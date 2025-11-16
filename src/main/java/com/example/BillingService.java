@@ -219,17 +219,36 @@ public class BillingService {
     }
     
     public boolean updateBillPayment(int billId, String status, String paymentMethod, String referenceNumber) throws SQLException {
-        try (Connection conn = DatabaseUtil.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                "UPDATE billing SET payment_status = ?, payment_method = ?, reference_number = ? WHERE id = ?")) {
+        String sql;
+        
+        // If status is "Paid", update all three fields
+        if ("Paid".equalsIgnoreCase(status)) {
+            sql = "UPDATE billing SET payment_status = ?, payment_method = ?, reference_number = ? WHERE id = ?";
             
-            stmt.setString(1, status);
-            stmt.setString(2, paymentMethod);
-            stmt.setString(3, referenceNumber);
-            stmt.setInt(4, billId);
+            try (Connection conn = DatabaseUtil.getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(sql)) {
+                
+                stmt.setString(1, status);
+                stmt.setString(2, paymentMethod != null ? paymentMethod : "");
+                stmt.setString(3, referenceNumber != null ? referenceNumber : "");
+                stmt.setInt(4, billId);
+                
+                int rowsAffected = stmt.executeUpdate();
+                return rowsAffected > 0;
+            }
+        } else {
+            // If status is NOT "Paid", only update status and set method/reference to NULL
+            sql = "UPDATE billing SET payment_status = ?, payment_method = NULL, reference_number = NULL WHERE id = ?";
             
-            int rowsAffected = stmt.executeUpdate();
-            return rowsAffected > 0;
+            try (Connection conn = DatabaseUtil.getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(sql)) {
+                
+                stmt.setString(1, status);
+                stmt.setInt(2, billId);
+                
+                int rowsAffected = stmt.executeUpdate();
+                return rowsAffected > 0;
+            }
         }
     }
     

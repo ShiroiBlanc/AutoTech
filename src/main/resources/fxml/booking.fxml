@@ -32,18 +32,21 @@
         <TabPane fx:id="bookingTabPane">
             <Tab text="All Bookings" closable="false">
                 <content>
-                    <TableView fx:id="bookingTable">
-                        <columns>
-                            <TableColumn fx:id="idColumn" text="Booking ID" prefWidth="120"/>
-                            <TableColumn fx:id="dateColumn" text="Date" prefWidth="100"/>
-                            <TableColumn fx:id="timeColumn" text="Time" prefWidth="80"/>
-                            <TableColumn fx:id="customerNameColumn" text="Customer" prefWidth="150"/>
-                            <TableColumn fx:id="vehicleColumn" text="Vehicle" prefWidth="150"/>
-                            <TableColumn fx:id="mechanicColumn" text="Mechanic" prefWidth="120"/>
-                            <TableColumn fx:id="statusColumn" text="Status" prefWidth="100"/>
-                            <TableColumn fx:id="actionsColumn" text="Actions" prefWidth="250"/>
-                        </columns>
-                    </TableView>
+                    <VBox>
+                        <TableView fx:id="bookingTable" VBox.vgrow="ALWAYS">
+                            <columns>
+                                <TableColumn fx:id="idColumn" text="Booking ID" prefWidth="100"/>
+                                <TableColumn fx:id="dateColumn" text="Date" prefWidth="85"/>
+                                <TableColumn fx:id="timeColumn" text="Time" prefWidth="65"/>
+                                <TableColumn fx:id="customerNameColumn" text="Customer" prefWidth="120"/>
+                                <TableColumn fx:id="vehicleColumn" text="Vehicle" prefWidth="130"/>
+                                <TableColumn fx:id="mechanicColumn" text="Mechanic" prefWidth="100"/>
+                                <TableColumn fx:id="statusColumn" text="Status" prefWidth="85"/>
+                                <TableColumn fx:id="actionsColumn" text="Actions" prefWidth="200"/>
+                            </columns>
+                        </TableView>
+                        <Pagination fx:id="bookingPagination" pageCount="1"/>
+                    </VBox>
                 </content>
             </Tab>
         </TabPane>

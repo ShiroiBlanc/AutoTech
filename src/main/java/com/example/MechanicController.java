@@ -23,6 +23,8 @@ public class MechanicController {
 
     @FXML private TextField searchField;
     @FXML private ComboBox<String> filterStatusComboBox;
+    @FXML private Button addMechanicButton;
+    @FXML private Pagination mechanicPagination;
     @FXML private TableView<MechanicViewModel> mechanicTable;
     @FXML private TableColumn<MechanicViewModel, String> idColumn;
     @FXML private TableColumn<MechanicViewModel, String> nameColumn;
@@ -35,6 +37,8 @@ public class MechanicController {
     @FXML private TabPane mechanicTabPane;
 
     private ObservableList<MechanicViewModel> mechanicList = FXCollections.observableArrayList();
+    private ObservableList<MechanicViewModel> allMechanics = FXCollections.observableArrayList();
+    private static final int ITEMS_PER_PAGE = 25;
     private MechanicService mechanicService = new MechanicService();
     
     // ViewModel for mechanics with additional properties
@@ -70,6 +74,15 @@ public class MechanicController {
     public void initialize() {
         System.out.println("Initializing MechanicController...");
         
+        // Check user role and hide Add button for cashiers
+        User currentUser = UserService.getInstance().getCurrentUser();
+        if (currentUser != null && currentUser.getRole() == User.UserRole.CASHIER) {
+            if (addMechanicButton != null) {
+                addMechanicButton.setVisible(false);
+                addMechanicButton.setManaged(false);
+            }
+        }
+        
         // Setup filter combo box
         filterStatusComboBox.getItems().addAll("All", "Available", "Busy", "Overloaded", "Off Duty");
         filterStatusComboBox.setValue("All");
@@ -80,6 +93,9 @@ public class MechanicController {
         specialtyColumn.setCellValueFactory(new PropertyValueFactory<>("specialty"));
         availabilityColumn.setCellValueFactory(new PropertyValueFactory<>("availability"));
         currentJobsColumn.setCellValueFactory(new PropertyValueFactory<>("currentJobs"));
+        
+        // Set table resize policy
+        mechanicTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         
         // Make ID column clickable to show full details
         idColumn.setCellFactory(column -> {
@@ -145,6 +161,9 @@ public class MechanicController {
         // Set table data
         mechanicTable.setItems(mechanicList);
         
+        // Setup pagination
+        setupPagination();
+        
         // Load initial data
         loadMechanics();
     }
@@ -204,7 +223,40 @@ public class MechanicController {
     
     @FXML
     private void handleAddMechanic() {
+        // Double-check role permission
+        User currentUser = UserService.getInstance().getCurrentUser();
+        if (currentUser != null && currentUser.getRole() == User.UserRole.CASHIER) {
+            showAlert(Alert.AlertType.ERROR, "Access Denied", 
+                     "Cashiers do not have permission to add mechanics.");
+            return;
+        }
         showMechanicDialog(null);
+    }
+    
+    private void setupPagination() {
+        if (mechanicPagination != null) {
+            mechanicPagination.setPageFactory(pageIndex -> {
+                updateTablePage(pageIndex);
+                return mechanicTable;
+            });
+        }
+    }
+    
+    private void updateTablePage(int pageIndex) {
+        int fromIndex = pageIndex * ITEMS_PER_PAGE;
+        int toIndex = Math.min(fromIndex + ITEMS_PER_PAGE, allMechanics.size());
+        
+        mechanicList.clear();
+        if (fromIndex < allMechanics.size()) {
+            mechanicList.addAll(allMechanics.subList(fromIndex, toIndex));
+        }
+    }
+    
+    private void updatePaginationControl() {
+        if (mechanicPagination != null) {
+            int pageCount = (int) Math.ceil((double) allMechanics.size() / ITEMS_PER_PAGE);
+            mechanicPagination.setPageCount(Math.max(1, pageCount));
+        }
     }
     
     private void loadMechanics() {
@@ -242,7 +294,7 @@ public class MechanicController {
     }
     
     private void updateMechanicViewList(List<Mechanic> mechanics) throws SQLException {
-        mechanicList.clear();
+        allMechanics.clear();
         
         // Get current job counts for all mechanics
         Map<Integer, Integer> jobCounts = mechanicService.getAllMechanicsJobCounts();
@@ -255,7 +307,7 @@ public class MechanicController {
             // Get current job count
             int jobCount = jobCounts.getOrDefault(mechanic.getId(), 0);
             
-            mechanicList.add(new MechanicViewModel(
+            allMechanics.add(new MechanicViewModel(
                 mechanic.getId(),
                 mechanic.getHexId(),
                 mechanic.getName(),
@@ -265,11 +317,23 @@ public class MechanicController {
             ));
         }
         
+        // Update pagination control
+        updatePaginationControl();
+        
+        // Update table - will show first page
+        if (mechanicPagination != null) {
+            updateTablePage(0);
+            mechanicPagination.setCurrentPageIndex(0);
+        } else {
+            mechanicList.clear();
+            mechanicList.addAll(allMechanics);
+        }
+        
         updateTotalMechanicsLabel();
     }
     
     private void updateTotalMechanicsLabel() {
-        totalMechanicsLabel.setText("Total mechanics: " + mechanicList.size());
+        totalMechanicsLabel.setText("Total mechanics: " + allMechanics.size());
     }
     
     private void showMechanicDetails(MechanicViewModel mechanicViewModel) {

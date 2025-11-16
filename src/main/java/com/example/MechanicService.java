@@ -413,12 +413,15 @@ public class MechanicService {
              PreparedStatement stmt = conn.prepareStatement(
                 "SELECT sb.id, sb.booking_date, c.name as customer_name, " +
                 "CONCAT(v.brand, ' ', v.model, ' (', v.plate_number, ')') as vehicle_info, " +
-                "sb.status, sb.service_description as description " +
+                "sb.status, " +
+                "GROUP_CONCAT(CONCAT(bs.service_type, ': ', bs.service_description) SEPARATOR ', ') as description " +
                 "FROM service_bookings sb " +
                 "JOIN vehicles v ON sb.vehicle_id = v.id " +
                 "JOIN customers c ON sb.customer_id = c.id " +
+                "LEFT JOIN booking_services bs ON sb.id = bs.booking_id " +
                 "WHERE sb.mechanic_id = ? " +
                 "AND sb.status != 'cancelled' " +
+                "GROUP BY sb.id, sb.booking_date, c.name, v.brand, v.model, v.plate_number, sb.status " +
                 "ORDER BY sb.booking_date DESC")) {
             
             stmt.setInt(1, mechanicId);

@@ -25,6 +25,7 @@ public class ServiceBookingController {
     @FXML private TextField searchField;
     @FXML private ComboBox<String> filterStatusComboBox;
     @FXML private DatePicker filterDatePicker;
+    @FXML private Pagination bookingPagination;
     @FXML private TableView<ServiceBookingViewModel> bookingTable;
     @FXML private TableColumn<ServiceBookingViewModel, Boolean> selectColumn;
     @FXML private TableColumn<ServiceBookingViewModel, String> idColumn;
@@ -83,6 +84,8 @@ public class ServiceBookingController {
     // Pagination variables
     private int currentPage = 0;
     private int rowsPerPage = 25;
+    private static final int ITEMS_PER_PAGE = 25;
+    private ObservableList<ServiceBookingViewModel> allBookings = FXCollections.observableArrayList();
     private boolean isMechanicView = false;
     private int currentMechanicId = 0;
     
@@ -96,6 +99,9 @@ public class ServiceBookingController {
     
     @FXML
     public void initialize() {
+        // Set table resize policy
+        bookingTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        
         // Initialize filter status combo box
         filterStatusComboBox.getItems().addAll("All", "Active", "Scheduled", "In Progress", "Completed", "Delayed");
         filterStatusComboBox.setValue("Active");
@@ -184,6 +190,9 @@ public class ServiceBookingController {
         
         // Set table data
         bookingTable.setItems(bookingList);
+        
+        // Setup pagination
+        setupPagination();
         
         // Setup cancelled bookings tab
         setupCancelledBookingsTab();
@@ -320,6 +329,32 @@ public class ServiceBookingController {
         showBookingDialog(null);
     }
     
+    private void setupPagination() {
+        if (bookingPagination != null) {
+            bookingPagination.setPageFactory(pageIndex -> {
+                updateTablePage(pageIndex);
+                return bookingTable;
+            });
+        }
+    }
+    
+    private void updateTablePage(int pageIndex) {
+        int fromIndex = pageIndex * ITEMS_PER_PAGE;
+        int toIndex = Math.min(fromIndex + ITEMS_PER_PAGE, allBookings.size());
+        
+        bookingList.clear();
+        if (fromIndex < allBookings.size()) {
+            bookingList.addAll(allBookings.subList(fromIndex, toIndex));
+        }
+    }
+    
+    private void updatePaginationControl() {
+        if (bookingPagination != null) {
+            int pageCount = (int) Math.ceil((double) allBookings.size() / ITEMS_PER_PAGE);
+            bookingPagination.setPageCount(Math.max(1, pageCount));
+        }
+    }
+    
     private void loadBookings() {
         // Load bookings with "Active" filter (excludes cancelled)
         loadBookingsFiltered("", "Active", null);
@@ -348,8 +383,21 @@ public class ServiceBookingController {
             }
             
             // THIS IS WHERE THE TABLE GETS POPULATED:
-            bookingList.clear();                    // Clear the existing data
-            bookingList.addAll(bookings);           // Add new bookings from database
+            allBookings.clear();                    // Clear all bookings
+            allBookings.addAll(bookings);           // Add new bookings from database
+            
+            // Update pagination control
+            updatePaginationControl();
+            
+            // Update table - will show first page
+            if (bookingPagination != null) {
+                updateTablePage(0);                 // Explicitly update to first page
+                bookingPagination.setCurrentPageIndex(0);
+            } else {
+                bookingList.clear();
+                bookingList.addAll(bookings);
+            }
+            
             updateTotalBookingsLabel();             // Update the count label
             statusLabel.setText("Search complete"); // Update status
         } catch (SQLException e) {

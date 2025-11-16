@@ -32,8 +32,11 @@ public class BillingController {
     @FXML private TableColumn<Bill, Void> actionsColumn;
     @FXML private TextField searchField;
     @FXML private Label statusLabel;
+    @FXML private Pagination billPagination;
     
     private ObservableList<Bill> billList = FXCollections.observableArrayList();
+    private ObservableList<Bill> allBills = FXCollections.observableArrayList();
+    private static final int ITEMS_PER_PAGE = 25;
     private BillingService billingService = BillingService.getInstance();
     
     @FXML
@@ -89,6 +92,12 @@ public class BillingController {
         // Set up actions column
         setupActionsColumn();
         
+        // Set table resize policy
+        billTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        
+        // Setup pagination
+        setupPagination();
+        
         // Load bills from database
         loadBills();
         
@@ -100,12 +109,40 @@ public class BillingController {
     private void loadBills() {
         try {
             List<Bill> bills = billingService.getAllBills();
-            billList.clear();
-            billList.addAll(bills);
+            allBills.clear();
+            allBills.addAll(bills);
+            updatePaginationControl();
+            updateTablePage(0);
             statusLabel.setText("Bills loaded successfully. Total: " + bills.size());
         } catch (SQLException e) {
             e.printStackTrace();
             showAlert(Alert.AlertType.ERROR, "Error", "Failed to load bills: " + e.getMessage());
+        }
+    }
+    
+    private void setupPagination() {
+        if (billPagination != null) {
+            billPagination.setPageFactory(pageIndex -> {
+                updateTablePage(pageIndex);
+                return billTable;
+            });
+        }
+    }
+    
+    private void updateTablePage(int pageIndex) {
+        int fromIndex = pageIndex * ITEMS_PER_PAGE;
+        int toIndex = Math.min(fromIndex + ITEMS_PER_PAGE, allBills.size());
+        
+        billList.clear();
+        if (fromIndex < allBills.size()) {
+            billList.addAll(allBills.subList(fromIndex, toIndex));
+        }
+    }
+    
+    private void updatePaginationControl() {
+        if (billPagination != null) {
+            int pageCount = (int) Math.ceil((double) allBills.size() / ITEMS_PER_PAGE);
+            billPagination.setPageCount(Math.max(1, pageCount));
         }
     }
     
@@ -550,141 +587,125 @@ public class BillingController {
     }
     
     private void processCashPayment(Bill bill) {
-        try {
-            // Show confirmation dialog for cash payment
-            Alert confirmDialog = new Alert(Alert.AlertType.CONFIRMATION);
-            confirmDialog.setTitle("Cash Payment Confirmation");
-            confirmDialog.setHeaderText("Confirm Cash Payment");
-            
-            // Create custom content with better sizing
-            VBox content = new VBox(15);
-            content.setPadding(new Insets(20));
-            content.setMinWidth(400);
-            content.setMinHeight(150);
-            
-            Label billLabel = new Label("Bill ID: " + bill.getHexId());
-            billLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold;");
-            
-            Label amountLabel = new Label("Amount: ₱" + String.format("%.2f", bill.getAmount()));
-            amountLabel.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #1B5E20;");
-            
-            Label confirmLabel = new Label("Confirm cash payment received?");
-            confirmLabel.setStyle("-fx-font-size: 12px;");
-            
-            content.getChildren().addAll(billLabel, amountLabel, confirmLabel);
-            
-            confirmDialog.getDialogPane().setContent(content);
-            confirmDialog.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);
-            
-            confirmDialog.showAndWait().ifPresent(response -> {
-                if (response == ButtonType.OK) {
-                    try {
-                        boolean success = billingService.updateBillPayment(bill.getId(), "Paid", "Cash", null);
-                        if (success) {
-                            bill.setPaymentStatus("Paid");
-                            bill.setPaymentMethod("Cash");
-                            billTable.refresh();
-                            statusLabel.setText("Cash payment processed for bill " + bill.getHexId());
-                            
-                            showAlert(Alert.AlertType.INFORMATION, 
-                                    "Payment Processed", 
-                                    "Cash payment has been successfully processed.");
-                        } else {
+        javafx.application.Platform.runLater(() -> {
+            try {
+                // Show confirmation dialog for cash payment
+                Alert confirmDialog = new Alert(Alert.AlertType.CONFIRMATION);
+                confirmDialog.setTitle("Cash Payment Confirmation");
+                confirmDialog.setHeaderText("Confirm Cash Payment");
+                
+                // Create custom content with better sizing
+                VBox content = new VBox(15);
+                content.setPadding(new Insets(20));
+                content.setMinWidth(400);
+                content.setMinHeight(150);
+                
+                Label billLabel = new Label("Bill ID: " + bill.getHexId());
+                billLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold;");
+                
+                Label amountLabel = new Label("Amount: ₱" + String.format("%.2f", bill.getAmount()));
+                amountLabel.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #1B5E20;");
+                
+                Label confirmLabel = new Label("Confirm cash payment received?");
+                confirmLabel.setStyle("-fx-font-size: 12px;");
+                
+                content.getChildren().addAll(billLabel, amountLabel, confirmLabel);
+                
+                confirmDialog.getDialogPane().setContent(content);
+                confirmDialog.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);
+                
+                confirmDialog.showAndWait().ifPresent(response -> {
+                    if (response == ButtonType.OK) {
+                        try {
+                            boolean success = billingService.updateBillPayment(bill.getId(), "Paid", "Cash", null);
+                            if (success) {
+                                bill.setPaymentStatus("Paid");
+                                bill.setPaymentMethod("Cash");
+                                billTable.refresh();
+                                statusLabel.setText("Cash payment processed for bill " + bill.getHexId());
+                                
+                                showAlert(Alert.AlertType.INFORMATION, 
+                                        "Payment Processed", 
+                                        "Cash payment has been successfully processed.");
+                            } else {
+                                showAlert(Alert.AlertType.ERROR, 
+                                        "Payment Error", 
+                                        "Failed to process payment. Please try again.");
+                            }
+                        } catch (SQLException ex) {
+                            ex.printStackTrace();
                             showAlert(Alert.AlertType.ERROR, 
-                                    "Payment Error", 
-                                    "Failed to process payment. Please try again.");
+                                    "Database Error", 
+                                    "Failed to update payment status: " + ex.getMessage());
                         }
-                    } catch (SQLException ex) {
-                        ex.printStackTrace();
-                        showAlert(Alert.AlertType.ERROR, 
-                                "Database Error", 
-                                "Failed to update payment status: " + ex.getMessage());
                     }
-                }
-            });
-        } catch (Exception e) {
-            e.printStackTrace();
-            showAlert(Alert.AlertType.ERROR, "Error", "Failed to process cash payment: " + e.getMessage());
-        }
+                });
+            } catch (Exception e) {
+                e.printStackTrace();
+                showAlert(Alert.AlertType.ERROR, "Error", "Failed to process cash payment: " + e.getMessage());
+            }
+        });
     }
     
     private void processBankTransferPayment(Bill bill) {
-        try {
-            // Create a dialog to enter bank transfer details
+        javafx.application.Platform.runLater(() -> {
+            // Create dialog
             Dialog<ButtonType> dialog = new Dialog<>();
             dialog.setTitle("Bank Transfer / Online Payment");
             dialog.setHeaderText("Enter Payment Details");
             
-            // Create main container
-            VBox content = new VBox(20);
-            content.setPadding(new Insets(30));
-            content.setStyle("-fx-background-color: white;");
-            content.setPrefWidth(550);
-            content.setPrefHeight(450);
+            // Main container
+            GridPane grid = new GridPane();
+            grid.setHgap(10);
+            grid.setVgap(15);
+            grid.setPadding(new Insets(20));
             
-            // Amount display
+            // Amount
             Label amountLabel = new Label("Amount: ₱" + String.format("%.2f", bill.getAmount()));
             amountLabel.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #1976D2;");
-            content.getChildren().add(amountLabel);
+            grid.add(amountLabel, 0, 0, 2, 1);
             
             // Payment method
-            VBox methodBox = new VBox(5);
             Label methodLabel = new Label("Payment Method:");
-            methodLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
-            
             ComboBox<String> methodCombo = new ComboBox<>();
             methodCombo.getItems().addAll("Bank Transfer", "Online Payment", "E-wallet");
             methodCombo.setValue("Bank Transfer");
-            methodCombo.setPrefWidth(400);
-            
-            methodBox.getChildren().addAll(methodLabel, methodCombo);
-            content.getChildren().add(methodBox);
+            methodCombo.setPrefWidth(300);
+            methodCombo.setEditable(false);
+            grid.add(methodLabel, 0, 1);
+            grid.add(methodCombo, 1, 1);
             
             // Reference number
-            VBox refBox = new VBox(5);
             Label refLabel = new Label("Reference Number: *");
-            refLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
-            
             TextField refField = new TextField();
-            refField.setPromptText("Enter transaction ID / Reference number");
-            refField.setPrefWidth(400);
+            refField.setPromptText("Enter transaction ID");
+            refField.setPrefWidth(300);
+            grid.add(refLabel, 0, 2);
+            grid.add(refField, 1, 2);
             
-            refBox.getChildren().addAll(refLabel, refField);
-            content.getChildren().add(refBox);
-            
-            // Bank/Provider name
-            VBox bankBox = new VBox(5);
-            Label bankLabel = new Label("Bank/Provider: (Optional)");
-            bankLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
-            
+            // Bank/Provider
+            Label bankLabel = new Label("Bank/Provider:");
             TextField bankField = new TextField();
-            bankField.setPromptText("E.g., BDO, BPI, GCash, etc.");
-            bankField.setPrefWidth(400);
-            
-            bankBox.getChildren().addAll(bankLabel, bankField);
-            content.getChildren().add(bankBox);
+            bankField.setPromptText("E.g., BDO, BPI, GCash");
+            bankField.setPrefWidth(300);
+            grid.add(bankLabel, 0, 3);
+            grid.add(bankField, 1, 3);
             
             // Notes
-            VBox notesBox = new VBox(5);
-            Label notesLabel = new Label("Notes: (Optional)");
-            notesLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
-            
+            Label notesLabel = new Label("Notes:");
             TextArea notesArea = new TextArea();
-            notesArea.setPromptText("Add any additional notes");
-            notesArea.setPrefWidth(400);
+            notesArea.setPromptText("Additional notes");
+            notesArea.setPrefWidth(300);
             notesArea.setPrefHeight(80);
             notesArea.setWrapText(true);
+            grid.add(notesLabel, 0, 4);
+            grid.add(notesArea, 1, 4);
             
-            notesBox.getChildren().addAll(notesLabel, notesArea);
-            content.getChildren().add(notesBox);
-            
-            // Set content to dialog
-            dialog.getDialogPane().setContent(content);
-            dialog.getDialogPane().setPrefSize(600, 550);
-            dialog.getDialogPane().setMinSize(600, 550);
+            // Set dialog content and buttons
+            dialog.getDialogPane().setContent(grid);
             dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
             
-            // Show dialog and process result
+            // Show and process - this is BLOCKING
             Optional<ButtonType> result = dialog.showAndWait();
             
             if (result.isPresent() && result.get() == ButtonType.OK) {
@@ -694,52 +715,39 @@ public class BillingController {
                 String notes = notesArea.getText().trim();
                 
                 if (refNumber.isEmpty()) {
-                    showAlert(Alert.AlertType.WARNING, 
-                            "Missing Information", 
-                            "Please enter a reference number for the transaction.");
+                    showAlert(Alert.AlertType.WARNING, "Missing Information", 
+                             "Please enter a reference number.");
                     return;
                 }
                 
-                // Build complete reference
                 String fullReference = refNumber;
-                if (!bankName.isEmpty()) {
-                    fullReference += " (" + bankName + ")";
-                }
-                if (!notes.isEmpty()) {
-                    fullReference += " - " + notes;
-                }
+                if (!bankName.isEmpty()) fullReference += " (" + bankName + ")";
+                if (!notes.isEmpty()) fullReference += " - " + notes;
                 
                 try {
-                    boolean success = billingService.updateBillPayment(bill.getId(), "Paid", method, fullReference);
+                    boolean success = billingService.updateBillPayment(
+                        bill.getId(), "Paid", method, fullReference);
+                    
                     if (success) {
                         bill.setPaymentStatus("Paid");
                         bill.setPaymentMethod(method);
                         bill.setReferenceNumber(fullReference);
                         billTable.refresh();
-                        statusLabel.setText(method + " payment processed for bill " + bill.getHexId());
+                        statusLabel.setText(method + " payment processed for " + bill.getHexId());
                         
-                        showAlert(Alert.AlertType.INFORMATION, 
-                                "Payment Processed", 
-                                method + " payment has been successfully recorded.\n\n" +
-                                "Reference: " + refNumber + "\n" +
-                                (bankName.isEmpty() ? "" : "Bank/Provider: " + bankName + "\n"));
+                        showAlert(Alert.AlertType.INFORMATION, "Payment Processed", 
+                                 method + " payment recorded.\n\nRef: " + refNumber);
                     } else {
-                        showAlert(Alert.AlertType.ERROR, 
-                                "Payment Error", 
-                                "Failed to process payment. Please try again.");
+                        showAlert(Alert.AlertType.ERROR, "Payment Error", 
+                                 "Failed to process payment.");
                     }
                 } catch (SQLException ex) {
                     ex.printStackTrace();
-                    showAlert(Alert.AlertType.ERROR, 
-                            "Database Error", 
-                            "Failed to update payment: " + ex.getMessage());
+                    showAlert(Alert.AlertType.ERROR, "Database Error", 
+                             "Failed to update payment: " + ex.getMessage());
                 }
             }
-            
-        } catch (Exception e) {
-            e.printStackTrace();
-            showAlert(Alert.AlertType.ERROR, "Error", "Failed to process bank transfer: " + e.getMessage());
-        }
+        });
     }
     
     private void printReceipt(Bill bill) {
@@ -1127,6 +1135,7 @@ public class BillingController {
                 try {
                     List<java.util.Map<String, String>> services = bookingService.getBookingServices(booking.getId());
                     if (!services.isEmpty()) {
+                        VBox servicesBox = new VBox(3);
                         for (java.util.Map<String, String> service : services) {
                             htmlContent.append("<p style='margin: 5px 0; font-weight: bold;'>• ").append(service.get("type")).append("</p>");
                         }
@@ -1247,14 +1256,6 @@ public class BillingController {
         searchField.clear();
         loadBills();
         billTable.setItems(billList);
-    }
-    
-    @FXML
-    private void handleGenerateBill() {
-        showAlert(Alert.AlertType.INFORMATION, 
-                 "Manual Bill Creation", 
-                 "Bills are automatically generated when service bookings are completed. " +
-                 "This feature would allow manual bill creation.");
     }
     
     private void showAlert(Alert.AlertType type, String title, String content) {

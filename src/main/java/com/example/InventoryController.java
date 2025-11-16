@@ -15,6 +15,8 @@ import java.sql.SQLException;
 import java.util.List;
 
 public class InventoryController {
+    @FXML private Button addItemButton;
+    @FXML private Pagination inventoryPagination;
     @FXML private TableView<InventoryItem> inventoryTable;
     @FXML private TableColumn<InventoryItem, String> partNumberColumn;
     @FXML private TableColumn<InventoryItem, String> nameColumn;
@@ -30,10 +32,21 @@ public class InventoryController {
     @FXML private Label statusLabel;
     
     private ObservableList<InventoryItem> inventoryList = FXCollections.observableArrayList();
+    private ObservableList<InventoryItem> allInventoryItems = FXCollections.observableArrayList();
+    private static final int ITEMS_PER_PAGE = 25;
     private InventoryService inventoryService = InventoryService.getInstance();
 
     @FXML
     public void initialize() {
+        // Check user role and hide Add button for cashiers
+        User currentUser = UserService.getInstance().getCurrentUser();
+        if (currentUser != null && currentUser.getRole() == User.UserRole.CASHIER) {
+            if (addItemButton != null) {
+                addItemButton.setVisible(false);
+                addItemButton.setManaged(false);
+            }
+        }
+        
         // Initialize columns - use hexId instead of partNumber for ID display
         partNumberColumn.setCellValueFactory(new PropertyValueFactory<>("hexId"));
         nameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
@@ -78,18 +91,63 @@ public class InventoryController {
         // Set up actions column
         setupActionsColumn();
         
+        // Set table resize policy
+        inventoryTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        
         // Load data from database
         loadInventoryData();
         
         // Set items to table
         inventoryTable.setItems(inventoryList);
+        
+        // Setup pagination
+        setupPagination();
+    }
+    
+    private void setupPagination() {
+        if (inventoryPagination != null) {
+            inventoryPagination.setPageFactory(pageIndex -> {
+                updateTablePage(pageIndex);
+                return inventoryTable;
+            });
+        }
+    }
+    
+    private void updateTablePage(int pageIndex) {
+        int fromIndex = pageIndex * ITEMS_PER_PAGE;
+        int toIndex = Math.min(fromIndex + ITEMS_PER_PAGE, allInventoryItems.size());
+        
+        inventoryList.clear();
+        if (fromIndex < allInventoryItems.size()) {
+            inventoryList.addAll(allInventoryItems.subList(fromIndex, toIndex));
+        }
+    }
+    
+    private void updatePaginationControl() {
+        if (inventoryPagination != null) {
+            int pageCount = (int) Math.ceil((double) allInventoryItems.size() / ITEMS_PER_PAGE);
+            inventoryPagination.setPageCount(Math.max(1, pageCount));
+        }
     }
 
     private void loadInventoryData() {
         try {
             List<InventoryItem> items = inventoryService.getAllItems();
-            inventoryList.clear();
-            inventoryList.addAll(items);
+            allInventoryItems.clear();
+            allInventoryItems.addAll(items);
+            
+            // Update pagination control
+            updatePaginationControl();
+            
+            // Update table - will show first page
+            if (inventoryPagination != null) {
+                updateTablePage(0);
+                inventoryPagination.setCurrentPageIndex(0);
+            } else {
+                inventoryList.clear();
+                inventoryList.addAll(items);
+            }
+            
             statusLabel.setText("Inventory loaded successfully. Total items: " + items.size());
         } catch (SQLException e) {
             e.printStackTrace();
@@ -192,6 +250,13 @@ public class InventoryController {
     
     @FXML
     private void handleAddItem() {
+        // Double-check role permission
+        User currentUser = UserService.getInstance().getCurrentUser();
+        if (currentUser != null && currentUser.getRole() == User.UserRole.CASHIER) {
+            showAlert(Alert.AlertType.ERROR, "Access Denied", 
+                     "Cashiers do not have permission to add inventory items.");
+            return;
+        }
         showInventoryItemDialog(null);
     }
     
@@ -445,9 +510,9 @@ public class InventoryController {
             
             // Set location dropdown value
             String existingLocation = item.getLocation();
-            if (locationComboBox.getItems().contains(existingLocation) && !"Other".equals(existingLocation)) {
+            if (existingLocation != null && locationComboBox.getItems().contains(existingLocation) && !"Other".equals(existingLocation)) {
                 locationComboBox.setValue(existingLocation);
-            } else if (!existingLocation.isEmpty() && !"Other".equals(existingLocation)) {
+            } else if (existingLocation != null && !existingLocation.isEmpty() && !"Other".equals(existingLocation)) {
                 locationComboBox.setValue("Other");
                 customLocationField.setText(existingLocation);
                 customLocationField.setVisible(true);

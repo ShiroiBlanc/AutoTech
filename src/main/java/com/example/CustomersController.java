@@ -22,6 +22,7 @@ import javafx.scene.control.Separator;
 
 public class CustomersController {
     @FXML private TextField searchField;
+    @FXML private Pagination customerPagination;
     @FXML private TableView<Customer> customerTable;
     @FXML private TableColumn<Customer, String> idColumn;
     @FXML private TableColumn<Customer, String> nameColumn;
@@ -34,6 +35,9 @@ public class CustomersController {
     @FXML private TabPane customerTabPane;
 
     private ObservableList<Customer> customerList = FXCollections.observableArrayList();
+    private ObservableList<Customer> allCustomers = FXCollections.observableArrayList();
+    private static final int ITEMS_PER_PAGE = 25;
+    private CustomerService customerService = CustomerService.getInstance();
     
     @FXML
     public void initialize() {
@@ -49,8 +53,14 @@ public class CustomersController {
         // Set up actions column with edit and delete buttons
         setupActionsColumn();
         
+        // Set table resize policy
+        customerTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        
         // Set table data
         customerTable.setItems(customerList);
+        
+        // Setup pagination
+        setupPagination();
         
         // Load initial data
         loadCustomers();
@@ -677,11 +687,50 @@ public class CustomersController {
         customerComboBox.requestFocus();
     }
     
+    private void setupPagination() {
+        if (customerPagination != null) {
+            customerPagination.setPageFactory(pageIndex -> {
+                updateTablePage(pageIndex);
+                return customerTable;
+            });
+        }
+    }
+    
+    private void updateTablePage(int pageIndex) {
+        int fromIndex = pageIndex * ITEMS_PER_PAGE;
+        int toIndex = Math.min(fromIndex + ITEMS_PER_PAGE, allCustomers.size());
+        
+        customerList.clear();
+        if (fromIndex < allCustomers.size()) {
+            customerList.addAll(allCustomers.subList(fromIndex, toIndex));
+        }
+    }
+    
+    private void updatePaginationControl() {
+        if (customerPagination != null) {
+            int pageCount = (int) Math.ceil((double) allCustomers.size() / ITEMS_PER_PAGE);
+            customerPagination.setPageCount(Math.max(1, pageCount));
+        }
+    }
+    
     private void loadCustomers() {
         try {
             List<Customer> customers = CustomerService.getInstance().getAllCustomers();
-            customerList.clear();
-            customerList.addAll(customers);
+            allCustomers.clear();
+            allCustomers.addAll(customers);
+            
+            // Update pagination control
+            updatePaginationControl();
+            
+            // Update table - will show first page
+            if (customerPagination != null) {
+                updateTablePage(0);
+                customerPagination.setCurrentPageIndex(0);
+            } else {
+                customerList.clear();
+                customerList.addAll(customers);
+            }
+            
             updateTotalCustomersLabel();
             statusLabel.setText("Customers loaded successfully");
         } catch (SQLException e) {

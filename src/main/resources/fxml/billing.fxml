@@ -18,23 +18,24 @@
             
             <HBox>
                 <Label fx:id="statusLabel" style="-fx-text-fill: green;"/>
-                <Region HBox.hgrow="ALWAYS" />
-                <Button text="Generate New Bill" onAction="#handleGenerateBill"/>
             </HBox>
         </VBox>
     </top>
     
     <center>
-        <TableView fx:id="billTable">
-            <columns>
-                <TableColumn fx:id="idColumn" text="Bill ID" prefWidth="120"/>
-                <TableColumn fx:id="customerColumn" text="Customer" prefWidth="150"/>
-                <TableColumn fx:id="vehicleColumn" text="Vehicle" prefWidth="150"/> 
-                <TableColumn fx:id="amountColumn" text="Amount" prefWidth="100"/>
-                <TableColumn fx:id="dateColumn" text="Date" prefWidth="100"/>
-                <TableColumn fx:id="statusColumn" text="Status" prefWidth="100"/>
-                <TableColumn fx:id="actionsColumn" text="Actions" prefWidth="150"/>
-            </columns>
-        </TableView>
+        <VBox>
+            <TableView fx:id="billTable" VBox.vgrow="ALWAYS">
+                <columns>
+                    <TableColumn fx:id="idColumn" text="Bill ID" prefWidth="120"/>
+                    <TableColumn fx:id="customerColumn" text="Customer" prefWidth="150"/>
+                    <TableColumn fx:id="vehicleColumn" text="Vehicle" prefWidth="150"/> 
+                    <TableColumn fx:id="amountColumn" text="Amount" prefWidth="100"/>
+                    <TableColumn fx:id="dateColumn" text="Date" prefWidth="100"/>
+                    <TableColumn fx:id="statusColumn" text="Status" prefWidth="100"/>
+                    <TableColumn fx:id="actionsColumn" text="Actions" prefWidth="150"/>
+                </columns>
+            </TableView>
+            <Pagination fx:id="billPagination" pageCount="1"/>
+        </VBox>
     </center>
 </BorderPane>

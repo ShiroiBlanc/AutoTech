@@ -20,7 +20,7 @@
             <HBox>
                 <Label fx:id="totalMechanicsLabel" text="Total mechanics: 0"/>
                 <Region HBox.hgrow="ALWAYS" />
-                <Button text="Add New Mechanic" onAction="#handleAddMechanic"/>
+                <Button fx:id="addMechanicButton" text="Add New Mechanic" onAction="#handleAddMechanic"/>
             </HBox>
             
             <Label fx:id="statusLabel" style="-fx-text-fill: green;"/>
@@ -31,16 +31,19 @@
         <TabPane fx:id="mechanicTabPane">
             <Tab text="All Mechanics" closable="false">
                 <content>
-                    <TableView fx:id="mechanicTable">
-                        <columns>
-                            <TableColumn fx:id="idColumn" text="Mechanic ID" prefWidth="120"/>
-                            <TableColumn fx:id="nameColumn" text="Name" prefWidth="150"/>
-                            <TableColumn fx:id="specialtyColumn" text="Specialty" prefWidth="150"/> 
-                            <TableColumn fx:id="availabilityColumn" text="Availability" prefWidth="100"/>
-                            <TableColumn fx:id="currentJobsColumn" text="Current Jobs" prefWidth="100"/>
-                            <TableColumn fx:id="actionsColumn" text="Actions" prefWidth="250"/>
-                        </columns>
-                    </TableView>
+                    <VBox>
+                        <TableView fx:id="mechanicTable" VBox.vgrow="ALWAYS">
+                            <columns>
+                                <TableColumn fx:id="idColumn" text="Mechanic ID" prefWidth="100"/>
+                                <TableColumn fx:id="nameColumn" text="Name" prefWidth="130"/>
+                                <TableColumn fx:id="specialtyColumn" text="Specialty" prefWidth="140"/> 
+                                <TableColumn fx:id="availabilityColumn" text="Availability" prefWidth="90"/>
+                                <TableColumn fx:id="currentJobsColumn" text="Jobs" prefWidth="60"/>
+                                <TableColumn fx:id="actionsColumn" text="Actions" prefWidth="180"/>
+                            </columns>
+                        </TableView>
+                        <Pagination fx:id="mechanicPagination" pageCount="1"/>
+                    </VBox>
                 </content>
             </Tab>
         </TabPane>

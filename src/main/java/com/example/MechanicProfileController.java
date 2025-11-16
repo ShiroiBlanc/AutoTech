@@ -29,12 +29,22 @@ public class MechanicProfileController {
     
     @FXML
     public void initialize() {
-        // Set up status combo box - only Available and Off Duty (Busy/Overloaded are auto-calculated)
-        statusComboBox.getItems().addAll("Available", "Off Duty");
-        
-        // Load mechanic data
-        loadMechanicProfile();
-        loadJobStatistics();
+        Platform.runLater(() -> {
+            try {
+                // Set up status combo box - only Available and Off Duty (Busy/Overloaded are auto-calculated)
+                if (statusComboBox != null) {
+                    statusComboBox.getItems().addAll("Available", "Off Duty");
+                }
+                
+                // Load mechanic data
+                loadMechanicProfile();
+                loadJobStatistics();
+            } catch (Exception e) {
+                e.printStackTrace();
+                showAlert(Alert.AlertType.ERROR, "Initialization Error", 
+                         "Failed to initialize mechanic profile: " + e.getMessage());
+            }
+        });
     }
     
     private void loadMechanicProfile() {
@@ -55,35 +65,53 @@ public class MechanicProfileController {
             }
             
             // Populate profile information
-            nameLabel.setText(currentMechanic.getName());
-            usernameLabel.setText(currentUser.getUsername());
-            emailLabel.setText(currentUser.getEmail());
+            if (nameLabel != null) {
+                nameLabel.setText(currentMechanic.getName() != null ? currentMechanic.getName() : "N/A");
+            }
+            if (usernameLabel != null) {
+                usernameLabel.setText(currentUser.getUsername() != null ? currentUser.getUsername() : "N/A");
+            }
+            if (emailLabel != null) {
+                emailLabel.setText(currentUser.getEmail() != null ? currentUser.getEmail() : "N/A");
+            }
             
             // Display specialties
-            if (currentMechanic.getSpecialties() != null && !currentMechanic.getSpecialties().isEmpty()) {
-                specialtiesLabel.setText(String.join(", ", currentMechanic.getSpecialties()));
-            } else {
-                specialtiesLabel.setText("No specialties listed");
+            if (specialtiesLabel != null) {
+                if (currentMechanic.getSpecialties() != null && !currentMechanic.getSpecialties().isEmpty()) {
+                    specialtiesLabel.setText(String.join(", ", currentMechanic.getSpecialties()));
+                } else {
+                    specialtiesLabel.setText("No specialties listed");
+                }
             }
             
             // Set current status
             String status = currentMechanic.getAvailability();
-            currentStatusLabel.setText(status);
-            
-            // Set combo box value - map auto-calculated statuses to Available
-            if ("Busy".equals(status) || "Overloaded".equals(status)) {
-                statusComboBox.setValue("Available");
-            } else {
-                statusComboBox.setValue(status);
+            if (status == null) {
+                status = "Available";
             }
             
-            // Update status label styling based on availability
-            updateStatusLabelStyle(status);
+            if (currentStatusLabel != null) {
+                currentStatusLabel.setText(status);
+                updateStatusLabelStyle(status);
+            }
+            
+            // Set combo box value - map auto-calculated statuses to Available
+            if (statusComboBox != null) {
+                if ("Busy".equals(status) || "Overloaded".equals(status)) {
+                    statusComboBox.setValue("Available");
+                } else {
+                    statusComboBox.setValue(status);
+                }
+            }
             
         } catch (SQLException e) {
             e.printStackTrace();
             showAlert(Alert.AlertType.ERROR, "Database Error", 
                      "Error loading profile: " + e.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Error", 
+                     "Unexpected error loading profile: " + e.getMessage());
         }
     }
     
@@ -114,6 +142,7 @@ public class MechanicProfileController {
                             scheduled = count;
                             break;
                         case "in progress":
+                        case "in_progress":
                             inProgress = count;
                             break;
                         case "delayed":
@@ -126,16 +155,35 @@ public class MechanicProfileController {
                 }
                 
                 // Update labels
-                scheduledCountLabel.setText(String.valueOf(scheduled));
-                inProgressCountLabel.setText(String.valueOf(inProgress));
-                delayedCountLabel.setText(String.valueOf(delayed));
-                completedCountLabel.setText(String.valueOf(completed));
+                final int fScheduled = scheduled;
+                final int fInProgress = inProgress;
+                final int fDelayed = delayed;
+                final int fCompleted = completed;
+                
+                Platform.runLater(() -> {
+                    if (scheduledCountLabel != null) {
+                        scheduledCountLabel.setText(String.valueOf(fScheduled));
+                    }
+                    if (inProgressCountLabel != null) {
+                        inProgressCountLabel.setText(String.valueOf(fInProgress));
+                    }
+                    if (delayedCountLabel != null) {
+                        delayedCountLabel.setText(String.valueOf(fDelayed));
+                    }
+                    if (completedCountLabel != null) {
+                        completedCountLabel.setText(String.valueOf(fCompleted));
+                    }
+                });
             }
             
         } catch (SQLException e) {
             e.printStackTrace();
             showAlert(Alert.AlertType.ERROR, "Database Error", 
                      "Error loading job statistics: " + e.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Error", 
+                     "Unexpected error loading job statistics: " + e.getMessage());
         }
     }
     
@@ -246,10 +294,12 @@ public class MechanicProfileController {
     }
     
     private void showAlert(Alert.AlertType type, String title, String content) {
-        Alert alert = new Alert(type);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(content);
-        alert.showAndWait();
+        Platform.runLater(() -> {
+            Alert alert = new Alert(type);
+            alert.setTitle(title);
+            alert.setHeaderText(null);
+            alert.setContentText(content);
+            alert.showAndWait();
+        });
     }
 }
