@@ -139,6 +139,8 @@ CREATE TABLE IF NOT EXISTS booking_services (
     FOREIGN KEY (booking_id) REFERENCES service_bookings(id) ON DELETE CASCADE
 );
 
+CREATE INDEX IF NOT EXISTS idx_booking_services_booking_id ON booking_services(booking_id);
+
 -- Service items table for labor
 CREATE TABLE service_items (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -313,7 +315,7 @@ CREATE INDEX idx_invoices_service_id ON invoices(service_id);
 CREATE INDEX idx_invoices_customer_id ON invoices(customer_id);
 CREATE INDEX idx_invoice_payments_invoice_id ON invoice_payments(invoice_id);
 
--- Create a view for service bookings details
+-- Create a view for service bookings details (aggregate services from booking_services)
 CREATE OR REPLACE VIEW service_booking_details AS
 SELECT 
     sb.id AS booking_id,
@@ -327,8 +329,9 @@ SELECT
     CONCAT(v.brand, ' ', v.model, ' (', v.plate_number, ')') AS vehicle,
     m.id AS mechanic_id,
     m.hex_id AS mechanic_hex_id,
-    sb.service_type,
-    sb.service_description,
+    -- aggregated service types and a representative description
+    GROUP_CONCAT(DISTINCT bs.service_type ORDER BY bs.id SEPARATOR ', ') AS service_types,
+    MAX(bs.service_description) AS service_description,
     u.username AS mechanic_name,
     sb.booking_date,
     sb.booking_time,
@@ -343,7 +346,14 @@ JOIN
 LEFT JOIN 
     mechanics m ON sb.mechanic_id = m.id
 LEFT JOIN 
-    users u ON m.user_id = u.id;
+    users u ON m.user_id = u.id
+LEFT JOIN
+    booking_services bs ON bs.booking_id = sb.id
+GROUP BY
+    sb.id, sb.hex_id, c.id, c.hex_id, c.name, c.phone,
+    v.id, v.hex_id, v.brand, v.model, v.plate_number,
+    m.id, m.hex_id, u.username,
+    sb.booking_date, sb.booking_time, sb.status, sb.estimated_duration;
 
 -- Create view for service details
 CREATE OR REPLACE VIEW service_details AS
@@ -378,14 +388,12 @@ LEFT JOIN
 LEFT JOIN 
     users u ON m.user_id = u.id;
 
--- Sample data for service_bookings
-INSERT INTO service_bookings (customer_id, vehicle_id, mechanic_id, service_type, service_description, booking_date, booking_time, estimated_duration)
+-- Sample data for service_bookings (insert booking first, then its services)
+INSERT INTO service_bookings (customer_id, vehicle_id, mechanic_id, booking_date, booking_time, estimated_duration)
 SELECT 
     c.id AS customer_id,
     v.id AS vehicle_id,
     (SELECT id FROM mechanics LIMIT 1) AS mechanic_id,
-    'Regular Maintenance' AS service_type,
-    'Oil change and multi-point inspection' AS service_description,
     DATE_ADD(CURDATE(), INTERVAL 2 DAY) AS booking_date,
     '10:00:00' AS booking_time,
     60 AS estimated_duration
@@ -395,3 +403,23 @@ JOIN
     vehicles v ON c.id = v.customer_id
 WHERE EXISTS (SELECT 1 FROM mechanics)
 LIMIT 1;
+
+-- Attach a service to the newly inserted booking (if any row was inserted)
+INSERT INTO booking_services (booking_id, service_type, service_description)
+SELECT 
+    (SELECT MAX(id) FROM service_bookings) AS booking_id,
+    'Regular Maintenance',
+    'Oil change and multi-point inspection'
+WHERE EXISTS (SELECT 1 FROM service_bookings);
+
+-- Migration: ensure booking_services.service_type exists (for older databases)
+SET @col_exists := (
+  SELECT COUNT(*) FROM information_schema.columns
+  WHERE table_schema = DATABASE() AND table_name = 'booking_services' AND column_name = 'service_type'
+);
+SET @sql := IF(@col_exists = 0,
+  'ALTER TABLE booking_services ADD COLUMN service_type VARCHAR(100) NOT NULL AFTER booking_id;',
+  'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

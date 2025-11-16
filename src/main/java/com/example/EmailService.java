@@ -327,12 +327,33 @@ public class EmailService {
         messageBody.append("<p>Dear ").append(customer.getName()).append(",</p>");
         messageBody.append("<p>Your vehicle service has been completed successfully. Below is a detailed breakdown of the service and charges.</p>");
         
+        // Get services from database
+        java.util.List<java.util.Map<String, String>> services = new java.util.ArrayList<>();
+        try {
+            ServiceBookingService bookingService = new ServiceBookingService();
+            services = bookingService.getBookingServices(booking.getId());
+        } catch (Exception e) {
+            System.err.println("Error getting services for email: " + e.getMessage());
+        }
+        
         // Service Details Section
         messageBody.append("<div style='background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 15px 0;'>");
         messageBody.append("<h3 style='margin-top: 0; color: #333;'>📋 Service Details</h3>");
         messageBody.append("<table style='width: 100%; border-collapse: collapse;'>");
         messageBody.append("<tr><td style='padding: 5px 0; width: 40%;'><strong>Booking ID:</strong></td><td>").append(booking.getHexId()).append("</td></tr>");
-        messageBody.append("<tr><td style='padding: 5px 0;'><strong>Service Type:</strong></td><td>").append(booking.getServiceType()).append("</td></tr>");
+        
+        // Display services
+        if (!services.isEmpty()) {
+            messageBody.append("<tr><td style='padding: 5px 0; vertical-align: top;'><strong>Services:</strong></td><td>");
+            for (int i = 0; i < services.size(); i++) {
+                messageBody.append(services.get(i).get("type"));
+                if (i < services.size() - 1) {
+                    messageBody.append("<br>");
+                }
+            }
+            messageBody.append("</td></tr>");
+        }
+        
         messageBody.append("<tr><td style='padding: 5px 0;'><strong>Vehicle:</strong></td><td>").append(booking.getVehicle().getBrand()).append("</td></tr>");
         messageBody.append("<tr><td style='padding: 5px 0;'><strong>Service Date:</strong></td><td>").append(booking.getDate()).append("</td></tr>");
         if (booking.getMechanic() != null && booking.getMechanic().getName() != null) {
@@ -371,16 +392,21 @@ public class EmailService {
         messageBody.append("<tr><td style='padding: 5px 0;'><strong>Bill Date:</strong></td><td>").append(bill.getBillDate()).append("</td></tr>");
         messageBody.append("</table>");
         
-        // Service Charge
-        messageBody.append("<div style='margin-top: 15px;'>");
-        messageBody.append("<h4 style='color: #1976D2; margin-bottom: 10px;'>Service Charge</h4>");
-        messageBody.append("<table style='width: 100%; border-collapse: collapse; background-color: white;'>");
-        messageBody.append("<tr style='border-bottom: 1px solid #ddd;'>");
-        messageBody.append("<td style='padding: 8px;'>").append(booking.getServiceType()).append("</td>");
-        messageBody.append("<td style='padding: 8px; text-align: right; font-weight: bold;'>₱").append(String.format("%.2f", serviceCharge)).append("</td>");
-        messageBody.append("</tr>");
-        messageBody.append("</table>");
-        messageBody.append("</div>");
+        // Service Charges (multiple services)
+        if (!services.isEmpty()) {
+            messageBody.append("<div style='margin-top: 15px;'>");
+            messageBody.append("<h4 style='color: #1976D2; margin-bottom: 10px;'>Service Charges</h4>");
+            messageBody.append("<table style='width: 100%; border-collapse: collapse; background-color: white;'>");
+            
+            // Show individual service charges if we can calculate them
+            // For simplicity, just show total service charge
+            messageBody.append("<tr style='border-bottom: 1px solid #ddd;'>");
+            messageBody.append("<td style='padding: 8px;'>Total Service Charges (").append(services.size()).append(" service(s))</td>");
+            messageBody.append("<td style='padding: 8px; text-align: right; font-weight: bold;'>₱").append(String.format("%.2f", serviceCharge)).append("</td>");
+            messageBody.append("</tr>");
+            messageBody.append("</table>");
+            messageBody.append("</div>");
+        }
         
         // Parts Used
         if (!parts.isEmpty()) {

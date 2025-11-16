@@ -68,7 +68,7 @@ public class BillingService {
             
             // First, check if the service booking exists and is completed
             checkStmt = conn.prepareStatement(
-                "SELECT sb.id, sb.customer_id, sb.service_type, sb.status " +
+                "SELECT sb.id, sb.customer_id, sb.status " +
                 "FROM service_bookings sb " +
                 "WHERE sb.id = ? AND sb.status = 'completed'");
                 
@@ -80,7 +80,6 @@ public class BillingService {
             }
             
             int customerId = rs.getInt("customer_id");
-            String serviceType = rs.getString("service_type");
             
             // Check if bill already exists for this service
             existsStmt = conn.prepareStatement(
@@ -93,8 +92,19 @@ public class BillingService {
                 return false; // Bill already exists for this service
             }
             
-            // Calculate service charge based on service type
-            double serviceCharge = calculateAmountByServiceType(serviceType);
+            // Get all service types for this booking and calculate total service charge
+            double totalServiceCharge = 0.0;
+            PreparedStatement servicesStmt = conn.prepareStatement(
+                "SELECT service_type FROM booking_services WHERE booking_id = ?");
+            servicesStmt.setInt(1, serviceBookingId);
+            ResultSet servicesRs = servicesStmt.executeQuery();
+            
+            while (servicesRs.next()) {
+                String serviceType = servicesRs.getString("service_type");
+                totalServiceCharge += calculateAmountByServiceType(serviceType);
+            }
+            servicesRs.close();
+            servicesStmt.close();
             
             // Get parts used in this booking and calculate parts cost
             double partsCost = 0.0;
@@ -109,8 +119,8 @@ public class BillingService {
             partsRs.close();
             partsStmt.close();
             
-            // Total amount = service charge + parts cost
-            double totalAmount = serviceCharge + partsCost;
+            // Total amount = service charges + parts cost
+            double totalAmount = totalServiceCharge + partsCost;
             
             // Create the bill
             insertStmt = conn.prepareStatement(

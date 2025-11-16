@@ -27,21 +27,15 @@
     </top>
     
     <center>
-        <TabPane fx:id="customerTabPane">
-            <Tab text="All Customers" closable="false">
-                <content>
-                    <TableView fx:id="customerTable">
-                        <columns>
-                            <TableColumn fx:id="idColumn" text="Customer ID" prefWidth="120"/>
-                            <TableColumn fx:id="nameColumn" text="Name" prefWidth="150"/>
-                            <TableColumn fx:id="phoneColumn" text="Phone" prefWidth="150"/> 
-                            <TableColumn fx:id="emailColumn" text="Email" prefWidth="150"/>
-                            <TableColumn fx:id="addressColumn" text="Address" prefWidth="200"/>
-                            <TableColumn fx:id="actionsColumn" text="Actions" prefWidth="350"/>
-                        </columns>
-                    </TableView>
-                </content>
-            </Tab>
-        </TabPane>
+        <TableView fx:id="customerTable">
+            <columns>
+                <TableColumn fx:id="idColumn" text="Customer ID" prefWidth="120"/>
+                <TableColumn fx:id="nameColumn" text="Name" prefWidth="150"/>
+                <TableColumn fx:id="phoneColumn" text="Phone" prefWidth="150"/> 
+                <TableColumn fx:id="emailColumn" text="Email" prefWidth="150"/>
+                <TableColumn fx:id="addressColumn" text="Address" prefWidth="200"/>
+                <TableColumn fx:id="actionsColumn" text="Actions" prefWidth="350"/>
+            </columns>
+        </TableView>
     </center>
 </BorderPane>

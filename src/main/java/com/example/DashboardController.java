@@ -7,10 +7,10 @@ import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
-import javafx.scene.control.Label; // Add this missing import
+import javafx.scene.control.Label;
 import javafx.scene.Node;
 import javafx.scene.layout.StackPane;
-import javafx.scene.layout.Region;  // Add this import
+import javafx.scene.layout.Region;
 import javafx.stage.Stage;
 import javafx.scene.Parent;
 import javafx.scene.layout.HBox;
@@ -33,27 +33,21 @@ public class DashboardController {
 
     @FXML
     public void initialize() {
-        // Initialize the dashboard
         try {
             System.out.println("Initializing dashboard controller");
             
-            // Check if contentArea is properly injected
             if (contentArea == null) {
                 System.err.println("Error: contentArea is null");
                 return;
             }
             
-            // Get current user and role if available
             User currentUser = UserService.getInstance().getCurrentUser();
             if (currentUser != null) {
                 System.out.println("Logged in as: " + currentUser.getUsername() + 
                                    ", Role: " + currentUser.getRole());
             }
             
-            // Show or hide navigation buttons based on user role
             setupRoleBasedAccess();
-            
-            // Default view based on role
             showDefaultView();
         } catch (Exception e) {
             System.err.println("Error in initialize: " + e.getMessage());
@@ -71,25 +65,20 @@ public class DashboardController {
         User.UserRole role = currentUser.getRole();
         System.out.println("Setting up access for role: " + role);
         
-        // First hide all buttons
         boolean showAllButtons = false;
         
-        // Then selectively show them based on role
         switch (role) {
             case ADMIN:
-                // Admin has access to everything
                 showAllButtons = true;
                 break;
                 
             case CASHIER:
-                // Cashier can see everything except admin panel
                 showAllButtons = true;
                 adminButton.setDisable(true);
                 adminButton.setVisible(false);
                 break;
                 
             case MECHANIC:
-                // Mechanics can ONLY see service bookings and their profile - hide everything else
                 customersButton.setDisable(true);
                 customersButton.setVisible(false);
                 customersButton.setManaged(false);
@@ -110,31 +99,22 @@ public class DashboardController {
                 adminButton.setVisible(false);
                 adminButton.setManaged(false);
                 
-                // Make sure service booking button is enabled and visible
                 serviceBookingButton.setDisable(false);
                 serviceBookingButton.setVisible(true);
                 
-                // Show My Profile button for mechanics
                 myProfileButton.setDisable(false);
                 myProfileButton.setVisible(true);
                 break;
         }
         
-        // Hide My Profile button for non-mechanic users
         if (role != User.UserRole.MECHANIC) {
             myProfileButton.setDisable(true);
             myProfileButton.setVisible(false);
             myProfileButton.setManaged(false);
         }
-        
-        // If not showing all buttons, make sure we've properly hidden the ones we don't want
-        if (!showAllButtons) {
-            System.out.println("Limited access mode for role: " + role);
-        }
     }
 
     private void showDefaultView() {
-        // All users start at the home page
         showHome();
     }
 
@@ -159,238 +139,97 @@ public class DashboardController {
     
     @FXML
     private void showHome() {
-        try {
-            System.out.println("Loading home view");
-            loadView("home");
-        } catch (Exception e) {
-            showError("Error loading home view: " + e.getMessage());
-            e.printStackTrace();
-        }
+        setActiveButton(homeButton);
+        loadView("home.fxml");  // Changed to use existing home.fxml
     }
-    
+
     @FXML
-    private void showCustomers() { 
-        try {
-            // Make sure this matches your FXML filename
-            loadView("customers"); 
-        } catch (Exception e) {
-            showError("Error loading customers view: " + e.getMessage());
-        }
+    private void showCustomers() {
+        setActiveButton(customersButton);
+        loadView("customers.fxml");  // Changed to use existing customers.fxml
     }
-    
+
     @FXML
     private void showBooking() {
-        try {
-            System.out.println("Loading service booking view");
-            loadView("booking");
-        } catch (Exception e) {
-            showError("Error loading booking view: " + e.getMessage());
-            e.printStackTrace();
-        }
+        setActiveButton(serviceBookingButton);
+        loadView("booking.fxml");  // Changed from servicebooking.fxml to booking.fxml
     }
-    
+
     @FXML
     private void showBilling() {
-        try {
-            System.out.println("Loading billing view");
-            loadView("billing");
-        } catch (Exception e) {
-            showError("Error loading billing view: " + e.getMessage());
-            e.printStackTrace();
-        }
+        setActiveButton(billingButton);
+        loadView("billing.fxml");
     }
-    
+
     @FXML
     private void showMechanics() {
-        try {
-            System.out.println("Loading mechanics view");
-            loadView("mechanics");
-        } catch (Exception e) {
-            showError("Error loading mechanics view: " + e.getMessage());
-            e.printStackTrace();
-        }
+        setActiveButton(mechanicsButton);
+        loadView("mechanics.fxml");
     }
-    
+
     @FXML
     private void showInventory() {
-        try {
-            System.out.println("Loading inventory view");
-            loadView("inventory");
-        } catch (Exception e) {
-            showError("Error loading inventory view: " + e.getMessage());
-            e.printStackTrace();
-        }
+        setActiveButton(inventoryButton);
+        loadView("inventory.fxml");
     }
-    
+
     @FXML
     private void showAdmin() {
-        try {
-            System.out.println("Loading admin view");
-            loadView("admin");
-        } catch (Exception e) {
-            showError("Error loading admin view: " + e.getMessage());
-            e.printStackTrace();
-        }
+        setActiveButton(adminButton);
+        loadView("admin.fxml");
     }
-    
+
     @FXML
     private void showMyProfile() {
-        try {
-            System.out.println("Loading my profile view");
-            loadView("mechanic-profile");
-        } catch (Exception e) {
-            showError("Error loading profile view: " + e.getMessage());
-            e.printStackTrace();
-        }
+        setActiveButton(myProfileButton);
+        loadView("myprofile.fxml");
     }
     
+    private void setActiveButton(Button activeButton) {
+        homeButton.getStyleClass().remove("nav-button-active");
+        customersButton.getStyleClass().remove("nav-button-active");
+        serviceBookingButton.getStyleClass().remove("nav-button-active");
+        billingButton.getStyleClass().remove("nav-button-active");
+        mechanicsButton.getStyleClass().remove("nav-button-active");
+        inventoryButton.getStyleClass().remove("nav-button-active");
+        adminButton.getStyleClass().remove("nav-button-active");
+        myProfileButton.getStyleClass().remove("nav-button-active");
+        
+        if (!activeButton.getStyleClass().contains("nav-button-active")) {
+            activeButton.getStyleClass().add("nav-button-active");
+        }
+    }
+
     public void openDashboardWindow() {
         try {
             dashboardStage = new Stage();
             
-            // Add more detailed debugging
-            System.out.println("Looking for dashboard.fxml...");
-            
-            // Check the working directory
-            System.out.println("Working directory: " + System.getProperty("user.dir"));
-            
-            // Try first path
             URL resourceUrl = getClass().getClassLoader().getResource("fxml/dashboard.fxml");
-            System.out.println("First attempt path: " + (resourceUrl != null ? resourceUrl.toString() : "Not found"));
+            if (resourceUrl == null) {
+                resourceUrl = App.class.getResource("/fxml/dashboard.fxml");
+            }
             
             if (resourceUrl == null) {
-                System.err.println("Cannot find dashboard.fxml in first location");
-                // Try alternative paths
-                String[] paths = {
-                    "/fxml/dashboard.fxml",
-                    "dashboard.fxml",
-                    "/dashboard.fxml",
-                    "../resources/fxml/dashboard.fxml"
-                };
-                
-                for (String path : paths) {
-                    System.out.println("Trying path: " + path);
-                    resourceUrl = App.class.getResource(path);
-                    if (resourceUrl != null) {
-                        System.out.println("Found at: " + resourceUrl);
-                        break;
-                    }
-                }
-                
-                if (resourceUrl == null) {
-                    throw new IOException("Cannot find dashboard.fxml resource");
-                }
+                throw new IOException("Cannot find dashboard.fxml");
             }
             
-            try {
-                FXMLLoader loader = new FXMLLoader(resourceUrl);
-                Parent root = loader.load();
-                
-                Scene scene = new Scene(root, 1200, 800);
-                dashboardStage.setTitle("AutoTech Dashboard");
-                dashboardStage.setScene(scene);
-                dashboardStage.show();
-                
-                DashboardController controller = loader.getController();
-                controller.dashboardStage = dashboardStage;
-            } catch (Exception fxmlException) {
-                // Emergency workaround - create dashboard programmatically
-                System.err.println("Error loading dashboard.fxml: " + fxmlException.getMessage());
-                fxmlException.printStackTrace();
-                
-                // Create a minimal dashboard layout
-                HBox root = new HBox();
-                
-                // Create sidebar
-                VBox sidebar = new VBox(10);
-                sidebar.setPrefWidth(200);
-                sidebar.setStyle("-fx-background-color: #2c3e50; -fx-padding: 10;");
-                
-                // Add elements to sidebar
-                javafx.scene.control.Label title = new javafx.scene.control.Label("AutoTech System"); // Use fully qualified name
-                title.setStyle("-fx-font-size: 20; -fx-text-fill: white;");
-                
-                // Create all navigation buttons
-                customersButton = new Button("Customers");
-                customersButton.setMaxWidth(Double.MAX_VALUE);
-                customersButton.setStyle("-fx-background-color: transparent; -fx-text-fill: white;");
-                customersButton.setOnAction(e -> showCustomers());
-                
-                serviceBookingButton = new Button("Service Bookings");
-                serviceBookingButton.setMaxWidth(Double.MAX_VALUE);
-                serviceBookingButton.setStyle("-fx-background-color: transparent; -fx-text-fill: white;");
-                serviceBookingButton.setOnAction(e -> showBooking());
-                
-                billingButton = new Button("Billing");
-                billingButton.setMaxWidth(Double.MAX_VALUE);
-                billingButton.setStyle("-fx-background-color: transparent; -fx-text-fill: white;");
-                billingButton.setOnAction(e -> showBilling());
-                
-                mechanicsButton = new Button("Mechanics");
-                mechanicsButton.setMaxWidth(Double.MAX_VALUE);
-                mechanicsButton.setStyle("-fx-background-color: transparent; -fx-text-fill: white;");
-                mechanicsButton.setOnAction(e -> showMechanics());
-                
-                inventoryButton = new Button("Inventory");
-                inventoryButton.setMaxWidth(Double.MAX_VALUE);
-                inventoryButton.setStyle("-fx-background-color: transparent; -fx-text-fill: white;");
-                inventoryButton.setOnAction(e -> showInventory());
-                
-                adminButton = new Button("Admin Panel");
-                adminButton.setMaxWidth(Double.MAX_VALUE);
-                adminButton.setStyle("-fx-background-color: transparent; -fx-text-fill: white;");
-                adminButton.setOnAction(e -> showAdmin());
-                
-                // Create a spacer region to push logout to bottom
-                Region spacer = new Region();
-                VBox.setVgrow(spacer, Priority.ALWAYS);
-                
-                // Add logout button
-                Button logoutButton = new Button("Logout");
-                logoutButton.setMaxWidth(Double.MAX_VALUE);
-                logoutButton.setStyle("-fx-background-color: #c0392b; -fx-text-fill: white;");
-                logoutButton.setOnAction(e -> handleLogout());
-                
-                // Add all buttons to sidebar
-                sidebar.getChildren().addAll(
-                    title, 
-                    customersButton, 
-                    serviceBookingButton,
-                    billingButton,
-                    mechanicsButton,
-                    inventoryButton,
-                    adminButton,
-                    spacer,  // Add spacer before logout button
-                    logoutButton
-                );
-                
-                // Create content area
-                contentArea = new StackPane();
-                contentArea.setStyle("-fx-background-color: white;");
-                StackPane.setMargin(contentArea, new Insets(20));
-                HBox.setHgrow(contentArea, Priority.ALWAYS);
-                
-                // Add both to root
-                root.getChildren().addAll(sidebar, contentArea);
-                
-                // Create scene with programmatically created layout
-                Scene scene = new Scene(root, 1200, 800);
-                dashboardStage.setTitle("AutoTech Dashboard (Emergency Mode)");
-                dashboardStage.setScene(scene);
-                dashboardStage.show();
-                
-                // Setup user access
-                setupRoleBasedAccess();
-                showDefaultView();
-                
-                return; // Exit early since we handled it programmatically
-            }
+            FXMLLoader loader = new FXMLLoader(resourceUrl);
+            Parent root = loader.load();
+            
+            Scene scene = new Scene(root, 1200, 800);
+            dashboardStage.setTitle("AutoTech Dashboard");
+            dashboardStage.setScene(scene);
+            
+            DashboardController controller = loader.getController();
+            controller.dashboardStage = dashboardStage;
+            
+            dashboardStage.show();
         } catch (Exception e) {
             showError("Error opening dashboard: " + e.getMessage());
             e.printStackTrace();
         }
     }
-
+    
     private void loadView(String fxml) {
         try {
             System.out.println("Trying to load view: " + fxml);
@@ -399,32 +238,29 @@ public class DashboardController {
                 throw new IllegalStateException("contentArea is null, FXML not properly initialized");
             }
             
-            // Replace "service" with "booking" since we're removing the duplicate file
-            String actualFxml = fxml;
-            if ("service".equals(fxml)) {
-                actualFxml = "booking";
-                System.out.println("Redirecting service view to booking.fxml");
-            }
-            
-            URL resourceUrl = getClass().getClassLoader().getResource("fxml/" + actualFxml + ".fxml");
+            URL resourceUrl = getClass().getClassLoader().getResource("fxml/" + fxml);
             if (resourceUrl == null) {
-                resourceUrl = App.class.getResource("/fxml/" + actualFxml + ".fxml");
+                resourceUrl = App.class.getResource("/fxml/" + fxml);
             }
             
             if (resourceUrl == null) {
+                System.err.println("ERROR: Cannot find FXML resource: fxml/" + fxml); // Added
                 throw new IOException("Cannot find FXML resource: " + fxml);
             }
             
+            System.out.println("Loading from URL: " + resourceUrl); // Added
             FXMLLoader loader = new FXMLLoader(resourceUrl);
             Node view = loader.load();
+            System.out.println("Successfully loaded view: " + fxml); // Added
             contentArea.getChildren().setAll(view);
         } catch (IOException e) {
+            System.err.println("IOException loading " + fxml + ": " + e.getMessage()); // Added
             showError("Error loading " + fxml + " view: " + e.getMessage());
             e.printStackTrace();
         } catch (Exception e) {
+            System.err.println("Unexpected error loading " + fxml + ": " + e.getMessage()); // Added
             showError("Unexpected error loading " + fxml + " view: " + e.getMessage());
             e.printStackTrace();
-            dashboardStage = null;
         }
     }
 

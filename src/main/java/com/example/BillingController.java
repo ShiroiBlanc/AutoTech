@@ -8,6 +8,9 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.print.PrinterJob;
@@ -205,6 +208,18 @@ public class BillingController {
             customerGrid.setVgap(8);
             customerGrid.setPadding(new Insets(10, 0, 0, 0));
             
+            // Set column constraints to prevent overlapping
+            ColumnConstraints labelCol = new ColumnConstraints();
+            labelCol.setMinWidth(150);
+            labelCol.setPrefWidth(150);
+            
+            ColumnConstraints valueCol = new ColumnConstraints();
+            valueCol.setMinWidth(400);
+            valueCol.setPrefWidth(500);
+            valueCol.setHgrow(Priority.ALWAYS);
+            
+            customerGrid.getColumnConstraints().addAll(labelCol, valueCol);
+            
             row = 0;
             addDetailRow(customerGrid, row++, "Customer Name:", booking.getCustomer().getName(), false);
             
@@ -244,13 +259,59 @@ public class BillingController {
             serviceGrid.setPadding(new Insets(10, 0, 0, 0));
             
             row = 0;
-            addDetailRow(serviceGrid, row++, "Service Type:", booking.getServiceType(), false);
+            addDetailRow(serviceGrid, row++, "Booking ID:", booking.getHexId(), false);
             addDetailRow(serviceGrid, row++, "Mechanic:", booking.getMechanic().getName(), false);
             addDetailRow(serviceGrid, row++, "Booking Date:", booking.getDate().toString(), false);
             addDetailRow(serviceGrid, row++, "Booking Time:", booking.getTime(), false);
             addDetailRow(serviceGrid, row++, "Status:", booking.getStatus().toUpperCase(), false);
             
             serviceSection.getChildren().add(serviceGrid);
+            
+            // Add services table
+            try {
+                List<java.util.Map<String, String>> services = bookingService.getBookingServices(booking.getId());
+                if (!services.isEmpty()) {
+                    Label servicesLabel = new Label("Services Performed:");
+                    servicesLabel.setStyle("-fx-font-weight: bold; -fx-padding: 10 0 5 0;");
+                    serviceSection.getChildren().add(servicesLabel);
+                    
+                    TableView<java.util.Map<String, String>> servicesTable = new TableView<>();
+                    servicesTable.setPrefHeight(150);
+                    servicesTable.setItems(FXCollections.observableArrayList(services));
+                    servicesTable.setStyle("-fx-background-color: white;");
+                    
+                    TableColumn<java.util.Map<String, String>, String> serviceTypeCol = new TableColumn<>("Service Type");
+                    serviceTypeCol.setCellValueFactory(cellData -> 
+                        new javafx.beans.property.SimpleStringProperty(cellData.getValue().get("type")));
+                    serviceTypeCol.setPrefWidth(200);
+                    
+                    TableColumn<java.util.Map<String, String>, String> serviceDescCol = new TableColumn<>("Description");
+                    serviceDescCol.setCellValueFactory(cellData -> 
+                        new javafx.beans.property.SimpleStringProperty(cellData.getValue().get("description")));
+                    serviceDescCol.setPrefWidth(400);
+                    serviceDescCol.setCellFactory(col -> new TableCell<java.util.Map<String, String>, String>() {
+                        @Override
+                        protected void updateItem(String desc, boolean empty) {
+                            super.updateItem(desc, empty);
+                            if (empty || desc == null || desc.trim().isEmpty()) {
+                                setText("No description provided");
+                                setStyle("-fx-text-fill: #888888; -fx-font-style: italic;");
+                            } else {
+                                setText(desc);
+                                setStyle("-fx-text-fill: black;");
+                            }
+                        }
+                    });
+                    
+                    servicesTable.getColumns().addAll(serviceTypeCol, serviceDescCol);
+                    serviceSection.getChildren().add(servicesTable);
+                }
+            } catch (SQLException e) {
+                Label errorLabel = new Label("Could not load services: " + e.getMessage());
+                errorLabel.setStyle("-fx-text-fill: #cc0000;");
+                serviceSection.getChildren().add(errorLabel);
+            }
+            
             mainContainer.getChildren().add(serviceSection);
             
             // === SERVICE DESCRIPTION SECTION ===
@@ -494,8 +555,26 @@ public class BillingController {
             Alert confirmDialog = new Alert(Alert.AlertType.CONFIRMATION);
             confirmDialog.setTitle("Cash Payment Confirmation");
             confirmDialog.setHeaderText("Confirm Cash Payment");
-            confirmDialog.setContentText("Process cash payment of ₱" + String.format("%.2f", bill.getAmount()) + 
-                                         " for bill " + bill.getHexId() + "?");
+            
+            // Create custom content with better sizing
+            VBox content = new VBox(15);
+            content.setPadding(new Insets(20));
+            content.setMinWidth(400);
+            content.setMinHeight(150);
+            
+            Label billLabel = new Label("Bill ID: " + bill.getHexId());
+            billLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold;");
+            
+            Label amountLabel = new Label("Amount: ₱" + String.format("%.2f", bill.getAmount()));
+            amountLabel.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #1B5E20;");
+            
+            Label confirmLabel = new Label("Confirm cash payment received?");
+            confirmLabel.setStyle("-fx-font-size: 12px;");
+            
+            content.getChildren().addAll(billLabel, amountLabel, confirmLabel);
+            
+            confirmDialog.getDialogPane().setContent(content);
+            confirmDialog.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);
             
             confirmDialog.showAndWait().ifPresent(response -> {
                 if (response == ButtonType.OK) {
@@ -536,74 +615,76 @@ public class BillingController {
             dialog.setTitle("Bank Transfer / Online Payment");
             dialog.setHeaderText("Enter Payment Details");
             
-            VBox content = new VBox(15);
-            content.setPadding(new Insets(20));
+            // Create main container
+            VBox content = new VBox(20);
+            content.setPadding(new Insets(30));
             content.setStyle("-fx-background-color: white;");
+            content.setPrefWidth(550);
+            content.setPrefHeight(450);
             
             // Amount display
             Label amountLabel = new Label("Amount: ₱" + String.format("%.2f", bill.getAmount()));
-            amountLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #1976D2;");
+            amountLabel.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #1976D2;");
             content.getChildren().add(amountLabel);
             
-            // Payment method selection
-            HBox methodBox = new HBox(15);
+            // Payment method
+            VBox methodBox = new VBox(5);
             Label methodLabel = new Label("Payment Method:");
-            methodLabel.setPrefWidth(150);
-            methodLabel.setStyle("-fx-font-weight: bold;");
+            methodLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
             
             ComboBox<String> methodCombo = new ComboBox<>();
-            methodCombo.setItems(FXCollections.observableArrayList(
-                "Bank Transfer",
-                "Online Payment",
-                "E-wallet"
-            ));
-            methodCombo.setPrefWidth(200);
+            methodCombo.getItems().addAll("Bank Transfer", "Online Payment", "E-wallet");
             methodCombo.setValue("Bank Transfer");
+            methodCombo.setPrefWidth(400);
+            
             methodBox.getChildren().addAll(methodLabel, methodCombo);
             content.getChildren().add(methodBox);
             
-            // Reference number input
-            HBox refBox = new HBox(15);
-            Label refLabel = new Label("Reference Number:");
-            refLabel.setPrefWidth(150);
-            refLabel.setStyle("-fx-font-weight: bold;");
+            // Reference number
+            VBox refBox = new VBox(5);
+            Label refLabel = new Label("Reference Number: *");
+            refLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
             
             TextField refField = new TextField();
             refField.setPromptText("Enter transaction ID / Reference number");
-            refField.setPrefWidth(200);
+            refField.setPrefWidth(400);
+            
             refBox.getChildren().addAll(refLabel, refField);
             content.getChildren().add(refBox);
             
-            // Bank name input (optional)
-            HBox bankBox = new HBox(15);
-            Label bankLabel = new Label("Bank/Provider:");
-            bankLabel.setPrefWidth(150);
-            bankLabel.setStyle("-fx-font-weight: bold;");
+            // Bank/Provider name
+            VBox bankBox = new VBox(5);
+            Label bankLabel = new Label("Bank/Provider: (Optional)");
+            bankLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
             
             TextField bankField = new TextField();
-            bankField.setPromptText("E.g., BDO, BPI, GCash, etc. (Optional)");
-            bankField.setPrefWidth(200);
+            bankField.setPromptText("E.g., BDO, BPI, GCash, etc.");
+            bankField.setPrefWidth(400);
+            
             bankBox.getChildren().addAll(bankLabel, bankField);
             content.getChildren().add(bankBox);
             
             // Notes
-            HBox notesBox = new HBox(15);
-            Label notesLabel = new Label("Notes:");
-            notesLabel.setPrefWidth(150);
-            notesLabel.setStyle("-fx-font-weight: bold;");
-            notesLabel.setAlignment(javafx.geometry.Pos.TOP_LEFT);
+            VBox notesBox = new VBox(5);
+            Label notesLabel = new Label("Notes: (Optional)");
+            notesLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
             
             TextArea notesArea = new TextArea();
-            notesArea.setPromptText("Add any additional notes (Optional)");
+            notesArea.setPromptText("Add any additional notes");
+            notesArea.setPrefWidth(400);
             notesArea.setPrefHeight(80);
-            notesArea.setPrefWidth(200);
             notesArea.setWrapText(true);
+            
             notesBox.getChildren().addAll(notesLabel, notesArea);
             content.getChildren().add(notesBox);
             
+            // Set content to dialog
             dialog.getDialogPane().setContent(content);
+            dialog.getDialogPane().setPrefSize(600, 550);
+            dialog.getDialogPane().setMinSize(600, 550);
             dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
             
+            // Show dialog and process result
             Optional<ButtonType> result = dialog.showAndWait();
             
             if (result.isPresent() && result.get() == ButtonType.OK) {
@@ -619,7 +700,7 @@ public class BillingController {
                     return;
                 }
                 
-                // Build complete reference with bank and notes
+                // Build complete reference
                 String fullReference = refNumber;
                 if (!bankName.isEmpty()) {
                     fullReference += " (" + bankName + ")";
@@ -729,16 +810,31 @@ public class BillingController {
             infoGrid.setHgap(20);
             infoGrid.setVgap(8);
             
+            // Set column constraints to prevent overlapping
+            ColumnConstraints leftCol = new ColumnConstraints();
+            leftCol.setMinWidth(300);
+            leftCol.setPrefWidth(350);
+            leftCol.setMaxWidth(400);
+            
+            ColumnConstraints rightCol = new ColumnConstraints();
+            rightCol.setMinWidth(300);
+            rightCol.setPrefWidth(350);
+            rightCol.setMaxWidth(400);
+            
+            infoGrid.getColumnConstraints().addAll(leftCol, rightCol);
+            
             Label customerTitleLabel = new Label("CUSTOMER INFORMATION");
             customerTitleLabel.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #1976D2;");
-            infoGrid.add(customerTitleLabel, 0, 0, 2, 1);
+            infoGrid.add(customerTitleLabel, 0, 0);
             
             Label customerNameLabel = new Label(bill.getCustomerName());
             customerNameLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 12px;");
+            customerNameLabel.setWrapText(true);
             infoGrid.add(customerNameLabel, 0, 1);
             
             Label vehicleLabel = new Label(bill.getVehicleInfo());
             vehicleLabel.setStyle("-fx-font-size: 11px;");
+            vehicleLabel.setWrapText(true);
             infoGrid.add(vehicleLabel, 0, 2);
             
             // Service info on right side
@@ -747,12 +843,28 @@ public class BillingController {
             infoGrid.add(serviceTitleLabel, 1, 0);
             
             if (booking != null) {
-                Label serviceTypeLabel = new Label(booking.getServiceType());
-                serviceTypeLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
-                infoGrid.add(serviceTypeLabel, 1, 1);
+                // Get services from database instead of using deprecated getServiceType()
+                try {
+                    List<java.util.Map<String, String>> services = bookingService.getBookingServices(booking.getId());
+                    if (!services.isEmpty()) {
+                        VBox servicesBox = new VBox(3);
+                        for (java.util.Map<String, String> service : services) {
+                            Label serviceLabel = new Label("• " + service.get("type"));
+                            serviceLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
+                            serviceLabel.setWrapText(true);
+                            servicesBox.getChildren().add(serviceLabel);
+                        }
+                        infoGrid.add(servicesBox, 1, 1);
+                    }
+                } catch (Exception e) {
+                    Label serviceTypeLabel = new Label("Service details unavailable");
+                    serviceTypeLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
+                    infoGrid.add(serviceTypeLabel, 1, 1);
+                }
                 
                 Label mechanicLabel = new Label("Mechanic: " + booking.getMechanic().getName());
                 mechanicLabel.setStyle("-fx-font-size: 10px;");
+                mechanicLabel.setWrapText(true);
                 infoGrid.add(mechanicLabel, 1, 2);
             }
             
@@ -969,6 +1081,8 @@ public class BillingController {
                 return;
             }
             
+            ServiceBookingService bookingService = new ServiceBookingService();
+            
             // Build receipt HTML
             StringBuilder htmlContent = new StringBuilder();
             htmlContent.append("<html><body style='font-family: Arial, sans-serif; background-color: #f5f5f5;'>");
@@ -995,7 +1109,7 @@ public class BillingController {
             htmlContent.append(java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")));
             htmlContent.append("</p>");
             
-            htmlContent.append("<hr style='border: none; border-top: 1px solid #ddd; margin: 15px 0;'>");
+            htmlContent.append("<hr style='border: none; border-top: 1px solid #ddd; margin: 15px 0'>");
             
             // Customer and service info
             htmlContent.append("<table style='width: 100%; margin-bottom: 15px;'>");
@@ -1007,15 +1121,26 @@ public class BillingController {
             htmlContent.append("</td>");
             htmlContent.append("<td style='vertical-align: top; width: 50%;'>");
             htmlContent.append("<p style='margin: 0 0 5px 0; font-weight: bold; color: #1976D2;'>SERVICE DETAILS</p>");
+            
+            // Get and display services
             if (booking != null) {
-                htmlContent.append("<p style='margin: 5px 0; font-weight: bold;'>").append(booking.getServiceType()).append("</p>");
-                htmlContent.append("<p style='margin: 5px 0; font-size: 12px;'>Mechanic: ").append(booking.getMechanic().getName()).append("</p>");
+                try {
+                    List<java.util.Map<String, String>> services = bookingService.getBookingServices(booking.getId());
+                    if (!services.isEmpty()) {
+                        for (java.util.Map<String, String> service : services) {
+                            htmlContent.append("<p style='margin: 5px 0; font-weight: bold;'>• ").append(service.get("type")).append("</p>");
+                        }
+                    }
+                    htmlContent.append("<p style='margin: 5px 0; font-size: 12px;'>Mechanic: ").append(booking.getMechanic().getName()).append("</p>");
+                } catch (Exception e) {
+                    htmlContent.append("<p style='margin: 5px 0;'>Service details unavailable</p>");
+                }
             }
             htmlContent.append("</td>");
             htmlContent.append("</tr>");
             htmlContent.append("</table>");
             
-            htmlContent.append("<hr style='border: none; border-top: 1px solid #ddd; margin: 15px 0;'>");
+            htmlContent.append("<hr style='border: none; border-top: 1px solid #ddd; margin: 15px 0'>");
             
             // Billing details
             htmlContent.append("<table style='width: 100%; margin-bottom: 15px; font-size: 13px;'>");
@@ -1029,7 +1154,6 @@ public class BillingController {
             
             // Parts (if any)
             try {
-                ServiceBookingService bookingService = new ServiceBookingService();
                 List<BookingPart> parts = bookingService.getBookingParts(booking.getId());
                 if (!parts.isEmpty()) {
                     htmlContent.append("<div style='margin-bottom: 15px;'>");
@@ -1061,7 +1185,7 @@ public class BillingController {
                 System.err.println("Error loading parts: " + e.getMessage());
             }
             
-            htmlContent.append("<hr style='border: none; border-top: 2px solid #ddd; margin: 15px 0;'>");
+            htmlContent.append("<hr style='border: none; border-top: 2px solid #ddd; margin: 15px 0'>");
             
             // Total amount
             htmlContent.append("<div style='background-color: #E8F5E9; padding: 15px; text-align: center; border: 2px solid #4CAF50; margin-bottom: 15px;'>");
@@ -1125,12 +1249,8 @@ public class BillingController {
         billTable.setItems(billList);
     }
     
-
-    
     @FXML
     private void handleGenerateBill() {
-        // In a real application, this would open a dialog to manually create a bill
-        // For now, we'll just show an information message
         showAlert(Alert.AlertType.INFORMATION, 
                  "Manual Bill Creation", 
                  "Bills are automatically generated when service bookings are completed. " +

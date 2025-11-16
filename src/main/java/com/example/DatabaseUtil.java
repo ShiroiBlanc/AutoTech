@@ -7,7 +7,7 @@ import java.sql.SQLException;
 public class DatabaseUtil {
     private static final String DB_URL = "jdbc:mysql://localhost:3306/AutoTech";
     private static final String DB_USER = "root";
-    private static final String DB_PASSWORD = "1234";
+    private static final String DB_PASSWORD = "root";
     
     static {
         try {

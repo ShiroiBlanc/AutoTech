@@ -42,24 +42,25 @@ public class ServiceBookingService {
             bookingTime.toLocalTime().getHour(),
             bookingTime.toLocalTime().getMinute());
         booking.setTime(time24);
-        booking.setServiceType(rs.getString("service_type"));
-        booking.setServiceDescription(rs.getString("service_description"));
+        // These columns don't exist in service_bookings table - they're in booking_services
+        // Remove these lines that try to access non-existent columns
+        // booking.setServiceType(rs.getString("service_types"));
+        // booking.setServiceDescription(rs.getString("service_description"));
         booking.setStatus(rs.getString("status"));
         
         return booking;
     }
     public boolean saveBooking(ServiceBookingViewModel booking) throws SQLException {
         try (Connection conn = DatabaseUtil.getConnection()) {
+            conn.setAutoCommit(false);
             String sql;
             if (booking.getId() > 0) {
                 sql = "UPDATE service_bookings SET customer_id = ?, vehicle_id = ?, mechanic_id = ?, " +
-                      "booking_date = ?, booking_time = ?, " +
-                      "service_type = ?, service_description = ?, status = ? " +
-                      "WHERE id = ?";
+                      "booking_date = ?, booking_time = ?, status = ? WHERE id = ?";
             } else {
                 sql = "INSERT INTO service_bookings (customer_id, vehicle_id, mechanic_id, " +
-                      "booking_date, booking_time, service_type, service_description, status, original_status, hex_id) " +
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                      "booking_date, booking_time, status, original_status, hex_id) " +
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
             }
             
             try (PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -69,8 +70,6 @@ public class ServiceBookingService {
                 stmt.setInt(param++, booking.getMechanic().getId());
                 stmt.setDate(param++, Date.valueOf(booking.getDate()));
                 stmt.setTime(param++, Time.valueOf(booking.getTime() + ":00"));
-                stmt.setString(param++, booking.getServiceType());
-                stmt.setString(param++, booking.getServiceDescription());
                 stmt.setString(param++, booking.getStatus());
                 
                 if (booking.getId() > 0) {
@@ -82,20 +81,52 @@ public class ServiceBookingService {
                 
                 int rowsAffected = stmt.executeUpdate();
                 
+                int bookingId = booking.getId();
                 // If it's a new booking, get the generated ID
-                if (booking.getId() == 0 && rowsAffected > 0) {
+                if (bookingId == 0 && rowsAffected > 0) {
                     ResultSet generatedKeys = stmt.getGeneratedKeys();
                     if (generatedKeys.next()) {
-                        booking.setId(generatedKeys.getInt(1));
+                        bookingId = generatedKeys.getInt(1);
+                        booking.setId(bookingId);
+                    }
+                }
+
+                if (bookingId > 0) {
+                    // Delete old services
+                    try (PreparedStatement delStmt = conn.prepareStatement("DELETE FROM booking_services WHERE booking_id = ?")) {
+                        delStmt.setInt(1, bookingId);
+                        delStmt.executeUpdate();
+                    }
+
+                    // Insert new services
+                    String serviceTypeCsv = booking.getServiceType();
+                    if (serviceTypeCsv != null && !serviceTypeCsv.trim().isEmpty()) {
+                        try (PreparedStatement bsStmt = conn.prepareStatement("INSERT INTO booking_services (booking_id, service_type, service_description) VALUES (?, ?, ?)")) {
+                            for (String s : serviceTypeCsv.split(",")) {
+                                String svc = s.trim();
+                                if (!svc.isEmpty()) {
+                                    bsStmt.setInt(1, bookingId);
+                                    bsStmt.setString(2, svc);
+                                    bsStmt.setString(3, booking.getServiceDescription()); // Use main description
+                                    bsStmt.addBatch();
+                                }
+                            }
+                            bsStmt.executeBatch();
+                        }
                     }
                 }
                 
+                conn.commit();
                 return rowsAffected > 0;
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
             }
         }
     }
     
     public ServiceBookingViewModel getBookingById(int bookingId) throws SQLException {
+        ServiceBookingViewModel booking = null;
         try (Connection conn = DatabaseUtil.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
                 "SELECT sb.*, c.name as customer_name, " +
@@ -112,11 +143,12 @@ public class ServiceBookingService {
             ResultSet rs = stmt.executeQuery();
             
             if (rs.next()) {
-                return createViewModel(rs);
+                booking = createViewModel(rs);
+                // Remove this line since setServices doesn't exist
+                // booking.setServices(getBookingServicesForTable(bookingId));
             }
         }
-        
-        return null;
+        return booking;
     }
     
     public List<ServiceBookingViewModel> getAllBookings() throws SQLException {
@@ -137,7 +169,8 @@ public class ServiceBookingService {
             ResultSet rs = stmt.executeQuery();
             
             while (rs.next()) {
-                bookings.add(createViewModel(rs));
+                ServiceBookingViewModel booking = createViewModel(rs);
+                bookings.add(booking);
             }
         }
         
@@ -164,7 +197,8 @@ public class ServiceBookingService {
             ResultSet rs = stmt.executeQuery();
             
             while (rs.next()) {
-                bookings.add(createViewModel(rs));
+                ServiceBookingViewModel booking = createViewModel(rs);
+                bookings.add(booking);
             }
         }
         
@@ -192,7 +226,7 @@ public class ServiceBookingService {
         
         // Add search condition
         if (searchTerm != null && !searchTerm.isEmpty()) {
-            query.append("AND (c.name LIKE ? OR v.plate_number LIKE ? OR u.username LIKE ? OR sb.service_type LIKE ?) ");
+            query.append("AND (c.name LIKE ? OR v.plate_number LIKE ? OR u.username LIKE ? OR EXISTS (SELECT 1 FROM booking_services bs2 WHERE bs2.booking_id = sb.id AND bs2.service_type LIKE ?)) ");
             String searchPattern = "%" + searchTerm + "%";
             params.add(searchPattern);
             params.add(searchPattern);
@@ -259,7 +293,7 @@ public class ServiceBookingService {
         
         // Add search condition
         if (searchTerm != null && !searchTerm.isEmpty()) {
-            query.append("AND (c.name LIKE ? OR v.plate_number LIKE ? OR u.username LIKE ? OR sb.service_type LIKE ?) ");
+            query.append("AND (c.name LIKE ? OR v.plate_number LIKE ? OR u.username LIKE ? OR EXISTS (SELECT 1 FROM booking_services bs2 WHERE bs2.booking_id = sb.id AND bs2.service_type LIKE ?)) ");
             String searchPattern = "%" + searchTerm + "%";
             params.add(searchPattern);
             params.add(searchPattern);
@@ -327,7 +361,8 @@ public class ServiceBookingService {
             ResultSet rs = stmt.executeQuery();
             
             while (rs.next()) {
-                bookings.add(createViewModel(rs));
+                ServiceBookingViewModel booking = createViewModel(rs);
+                bookings.add(booking);
             }
         }
         
@@ -358,7 +393,8 @@ public class ServiceBookingService {
             ResultSet rs = stmt.executeQuery();
             
             while (rs.next()) {
-                bookings.add(createViewModel(rs));
+                ServiceBookingViewModel booking = createViewModel(rs);
+                bookings.add(booking);
             }
         }
         
@@ -372,27 +408,50 @@ public class ServiceBookingService {
         try (Connection conn = DatabaseUtil.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
                 "INSERT INTO service_bookings (customer_id, vehicle_id, mechanic_id, booking_date, booking_time, " +
-                "service_type, service_description, status, hex_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                "status, hex_id) VALUES (?, ?, ?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS)) {
             
             stmt.setInt(1, customerId);
             stmt.setInt(2, vehicleId);
             stmt.setInt(3, mechanicId);
             stmt.setDate(4, Date.valueOf(bookingDate));
-            stmt.setTime(5, Time.valueOf(bookingTime + ":00")); // Add seconds
-            stmt.setString(6, serviceType);
-            stmt.setString(7, serviceDescription);
-            stmt.setString(8, status);
-            stmt.setString(9, HexIdGenerator.generateBookingId());
+            stmt.setTime(5, Time.valueOf(bookingTime + ":00"));
+            stmt.setString(6, status);
+            stmt.setString(7, HexIdGenerator.generateBookingId());
             
-            return stmt.executeUpdate() > 0;
+            int rowsAffected = stmt.executeUpdate();
+            if (rowsAffected == 0) return false;
+            
+            ResultSet generatedKeys = stmt.getGeneratedKeys();
+            if (generatedKeys.next()) {
+                int bookingId = generatedKeys.getInt(1);
+                
+                // Insert service types into booking_services table (with service_description)
+                if (serviceType != null && !serviceType.trim().isEmpty()) {
+                    try (PreparedStatement bsStmt = conn.prepareStatement(
+                        "INSERT INTO booking_services (booking_id, service_type, service_description) VALUES (?, ?, ?)")) {
+                        String[] services = serviceType.split(",");
+                        for (String s : services) {
+                            String svc = s.trim();
+                            if (!svc.isEmpty()) {
+                                bsStmt.setInt(1, bookingId);
+                                bsStmt.setString(2, svc);
+                                bsStmt.setString(3, serviceDescription);
+                                bsStmt.addBatch();
+                            }
+                        }
+                        bsStmt.executeBatch();
+                    }
+                }
+            }
+            
+            return rowsAffected > 0;
         }
     }
     
     // Create booking and return the generated ID
-    // Also checks stock availability and reserves parts immediately
     public int createBookingAndReturnId(int customerId, int vehicleId, int mechanicId, 
                                LocalDate bookingDate, String bookingTime, 
-                               String serviceType, String serviceDescription, String status,
+                               List<Map<String, String>> servicesList,
                                List<BookingPart> partsToUse) throws SQLException {
         
         Connection conn = null;
@@ -404,7 +463,7 @@ public class ServiceBookingService {
         
         try {
             conn = DatabaseUtil.getConnection();
-            conn.setAutoCommit(false); // Start transaction
+            conn.setAutoCommit(false);
             
             // Check if all parts have sufficient available quantity
             boolean hasInsufficientParts = false;
@@ -461,12 +520,12 @@ public class ServiceBookingService {
             checkStmt.close();
             
             // Set status to "delayed" if insufficient parts OR mechanic is off duty OR mechanic is overloaded
-            String finalStatus = (hasInsufficientParts || mechanicOffDuty || mechanicOverloaded) ? "delayed" : status;
+            String finalStatus = (hasInsufficientParts || mechanicOffDuty || mechanicOverloaded) ? "delayed" : "scheduled";
             
-            // Create the booking
+            // Create the booking WITHOUT service columns that don't exist
             stmt = conn.prepareStatement(
                 "INSERT INTO service_bookings (customer_id, vehicle_id, mechanic_id, booking_date, booking_time, " +
-                "service_type, service_description, status, hex_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "status, hex_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 PreparedStatement.RETURN_GENERATED_KEYS);
             
             stmt.setInt(1, customerId);
@@ -474,10 +533,8 @@ public class ServiceBookingService {
             stmt.setInt(3, mechanicId);
             stmt.setDate(4, Date.valueOf(bookingDate));
             stmt.setTime(5, Time.valueOf(bookingTime + ":00"));
-            stmt.setString(6, serviceType);
-            stmt.setString(7, serviceDescription);
-            stmt.setString(8, finalStatus);
-            stmt.setString(9, HexIdGenerator.generateBookingId());
+            stmt.setString(6, finalStatus);
+            stmt.setString(7, HexIdGenerator.generateBookingId());
             
             int affectedRows = stmt.executeUpdate();
             int bookingId = -1;
@@ -486,6 +543,24 @@ public class ServiceBookingService {
                 generatedKeys = stmt.getGeneratedKeys();
                 if (generatedKeys.next()) {
                     bookingId = generatedKeys.getInt(1);
+                }
+            }
+            
+            // Insert ALL services from the servicesList into booking_services table
+            if (bookingId > 0 && servicesList != null && !servicesList.isEmpty()) {
+                try (PreparedStatement bsStmt = conn.prepareStatement(
+                    "INSERT INTO booking_services (booking_id, service_type, service_description) VALUES (?, ?, ?)")) {
+                    for (Map<String, String> service : servicesList) {
+                        String serviceType = service.get("type");
+                        String serviceDesc = service.get("description");
+                        if (serviceType != null && !serviceType.trim().isEmpty()) {
+                            bsStmt.setInt(1, bookingId);
+                            bsStmt.setString(2, serviceType.trim());
+                            bsStmt.setString(3, serviceDesc != null ? serviceDesc.trim() : "");
+                            bsStmt.addBatch();
+                        }
+                    }
+                    bsStmt.executeBatch();
                 }
             }
             
@@ -555,25 +630,56 @@ public class ServiceBookingService {
     
     public boolean updateBooking(int id, int customerId, int vehicleId, int mechanicId, 
                                LocalDate bookingDate, String bookingTime, 
-                               String serviceType, String serviceDescription, String status) throws SQLException {
+                               List<Map<String, String>> servicesList, String status) throws SQLException {
         
-        try (Connection conn = DatabaseUtil.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
+        try (Connection conn = DatabaseUtil.getConnection()) {
+            conn.setAutoCommit(false);
+            try (PreparedStatement stmt = conn.prepareStatement(
                 "UPDATE service_bookings SET customer_id = ?, vehicle_id = ?, mechanic_id = ?, " +
-                "booking_date = ?, booking_time = ?, service_type = ?, service_description = ?, " +
-                "status = ? WHERE id = ?")) {
+                "booking_date = ?, booking_time = ?, status = ? WHERE id = ?")) {
             
-            stmt.setInt(1, customerId);
-            stmt.setInt(2, vehicleId);
-            stmt.setInt(3, mechanicId);
-            stmt.setDate(4, Date.valueOf(bookingDate));
-            stmt.setTime(5, Time.valueOf(bookingTime + ":00")); // Add seconds
-            stmt.setString(6, serviceType);
-            stmt.setString(7, serviceDescription);
-            stmt.setString(8, status);
-            stmt.setInt(9, id);
-            
-            return stmt.executeUpdate() > 0;
+                stmt.setInt(1, customerId);
+                stmt.setInt(2, vehicleId);
+                stmt.setInt(3, mechanicId);
+                stmt.setDate(4, Date.valueOf(bookingDate));
+                stmt.setTime(5, Time.valueOf(bookingTime + ":00")); // Add seconds
+                stmt.setString(6, status);
+                stmt.setInt(7, id);
+                
+                int rowsAffected = stmt.executeUpdate();
+                
+                // Delete existing booking_services and insert ALL new ones from servicesList
+                if (rowsAffected > 0) {
+                    try (PreparedStatement delStmt = conn.prepareStatement("DELETE FROM booking_services WHERE booking_id = ?")) {
+                        delStmt.setInt(1, id);
+                        delStmt.executeUpdate();
+                    }
+                    
+                    // Insert ALL services from the servicesList
+                    if (servicesList != null && !servicesList.isEmpty()) {
+                        try (PreparedStatement bsStmt = conn.prepareStatement(
+                            "INSERT INTO booking_services (booking_id, service_type, service_description) VALUES (?, ?, ?)")) {
+                            for (Map<String, String> service : servicesList) {
+                                String serviceType = service.get("type");
+                                String serviceDesc = service.get("description");
+                                if (serviceType != null && !serviceType.trim().isEmpty()) {
+                                    bsStmt.setInt(1, id);
+                                    bsStmt.setString(2, serviceType.trim());
+                                    bsStmt.setString(3, serviceDesc != null ? serviceDesc.trim() : "");
+                                    bsStmt.addBatch();
+                                }
+                            }
+                            bsStmt.executeBatch();
+                        }
+                    }
+                }
+                
+                conn.commit();
+                return rowsAffected > 0;
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            }
         }
     }
     
@@ -1245,12 +1351,18 @@ public class ServiceBookingService {
      * Add a service to a booking (supports multiple services per booking)
      */
     public boolean addServiceToBooking(int bookingId, String serviceType, String serviceDescription) throws SQLException {
+        // Validate that serviceType is not null or empty
+        if (serviceType == null || serviceType.trim().isEmpty()) {
+            System.err.println("Attempted to add service with null/empty type - skipping");
+            return false;
+        }
+        
         try (Connection conn = DatabaseUtil.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
                 "INSERT INTO booking_services (booking_id, service_type, service_description) VALUES (?, ?, ?)")) {
             stmt.setInt(1, bookingId);
-            stmt.setString(2, serviceType);
-            stmt.setString(3, serviceDescription);
+            stmt.setString(2, serviceType.trim());
+            stmt.setString(3, serviceDescription != null ? serviceDescription.trim() : "");
             return stmt.executeUpdate() > 0;
         }
     }
@@ -1260,20 +1372,43 @@ public class ServiceBookingService {
      */
     public List<Map<String, String>> getBookingServices(int bookingId) throws SQLException {
         List<Map<String, String>> services = new ArrayList<>();
+        
+        // First, let's check what columns actually exist
         try (Connection conn = DatabaseUtil.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
-                "SELECT id, service_type, service_description FROM booking_services WHERE booking_id = ? ORDER BY created_at ASC")) {
+                "SELECT * FROM booking_services WHERE booking_id = ? LIMIT 1")) {
             stmt.setInt(1, bookingId);
             ResultSet rs = stmt.executeQuery();
             
-            while (rs.next()) {
-                Map<String, String> service = new HashMap<>();
-                service.put("id", String.valueOf(rs.getInt("id")));
-                service.put("type", rs.getString("service_type"));
-                service.put("description", rs.getString("service_description"));
-                services.add(service);
+            // Get column metadata
+            ResultSetMetaData metaData = rs.getMetaData();
+            boolean hasServiceDescription = false;
+            for (int i = 1; i <= metaData.getColumnCount(); i++) {
+                if ("service_description".equals(metaData.getColumnName(i))) {
+                    hasServiceDescription = true;
+                    break;
+                }
+            }
+            
+            // Now query with correct columns
+            String query = hasServiceDescription 
+                ? "SELECT id, service_type, service_description FROM booking_services WHERE booking_id = ? ORDER BY id ASC"
+                : "SELECT id, service_type FROM booking_services WHERE booking_id = ? ORDER BY id ASC";
+                
+            try (PreparedStatement finalStmt = conn.prepareStatement(query)) {
+                finalStmt.setInt(1, bookingId);
+                ResultSet finalRs = finalStmt.executeQuery();
+                
+                while (finalRs.next()) {
+                    Map<String, String> service = new HashMap<>();
+                    service.put("id", String.valueOf(finalRs.getInt("id")));
+                    service.put("type", finalRs.getString("service_type"));
+                    service.put("description", hasServiceDescription ? finalRs.getString("service_description") : "");
+                    services.add(service);
+                }
             }
         }
+        
         return services;
     }
     
@@ -1333,5 +1468,62 @@ public class ServiceBookingService {
             stmt.setInt(1, bookingId);
             stmt.executeUpdate();
         }
+    }
+    
+    /**
+     * Get all services for a booking formatted for table display
+     */
+    public List<BookingServiceTableItem> getBookingServicesForTable(int bookingId) throws SQLException {
+        List<BookingServiceTableItem> services = new ArrayList<>();
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                "SELECT id, service_type, service_description FROM booking_services WHERE booking_id = ? ORDER BY id ASC")) {
+            stmt.setInt(1, bookingId);
+            ResultSet rs = stmt.executeQuery();
+            
+            while (rs.next()) {
+                services.add(new BookingServiceTableItem(
+                    rs.getInt("id"),
+                    rs.getString("service_type"),
+                    rs.getString("service_description")
+                ));
+            }
+        }
+        return services;
+    }
+
+    /**
+     * Get count of services for a booking (for list view summary)
+     */
+    public int getBookingServicesCount(int bookingId) throws SQLException {
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                "SELECT COUNT(*) FROM booking_services WHERE booking_id = ?")) {
+            stmt.setInt(1, bookingId);
+            ResultSet rs = stmt.executeQuery();
+            
+            if (rs.next()) {
+                return rs.getInt(1);
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Get services summary as string (for quick display)
+     */
+    public String getBookingServicesSummary(int bookingId) throws SQLException {
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                "SELECT GROUP_CONCAT(service_type SEPARATOR ', ') as summary FROM booking_services WHERE booking_id = ?")) {
+            stmt.setInt(1, bookingId);
+            ResultSet rs = stmt.executeQuery();
+            
+            if (rs.next()) {
+                String summary = rs.getString("summary");
+                return summary != null ? summary : "No services";
+            }
+        }
+        return "No services";
     }
 }

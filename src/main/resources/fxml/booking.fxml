@@ -9,11 +9,11 @@
     <top>
         <VBox spacing="10" style="-fx-padding: 10;">
             <HBox spacing="10" alignment="CENTER_LEFT">
-                <Label text="Service Bookings" style="-fx-font-size: 24; -fx-font-weight: bold;"/>
+                <Label text="Service Bookings Management" style="-fx-font-size: 24; -fx-font-weight: bold;"/>
                 <Region HBox.hgrow="ALWAYS" />
                 <TextField fx:id="searchField" promptText="Search bookings..." prefWidth="200"/>
-                <ComboBox fx:id="filterStatusComboBox" promptText="Status" prefWidth="150" />
-                <DatePicker fx:id="filterDatePicker" promptText="Select date" />
+                <ComboBox fx:id="filterStatusComboBox" promptText="Filter by status" prefWidth="150"/>
+                <DatePicker fx:id="filterDatePicker" promptText="Filter by date" prefWidth="150"/>
                 <Button text="Search" onAction="#handleSearchBookings"/>
                 <Button text="Refresh" onAction="#handleRefreshBookings"/>
             </HBox>
@@ -21,9 +21,7 @@
             <HBox>
                 <Label fx:id="totalBookingsLabel" text="Total bookings: 0"/>
                 <Region HBox.hgrow="ALWAYS" />
-                <Button fx:id="deleteSelectedButton" text="Delete Selected" onAction="#handleDeleteSelected" 
-                        style="-fx-background-color: #d32f2f; -fx-text-fill: white;"/>
-                <Button text="Book New Service" onAction="#handleAddBooking"/>
+                <Button text="Add New Booking" onAction="#handleAddBooking"/>
             </HBox>
             
             <Label fx:id="statusLabel" style="-fx-text-fill: green;"/>
@@ -32,20 +30,18 @@
     
     <center>
         <TabPane fx:id="bookingTabPane">
-            <Tab text="Active Bookings" closable="false">
+            <Tab text="All Bookings" closable="false">
                 <content>
                     <TableView fx:id="bookingTable">
                         <columns>
-                            <TableColumn fx:id="selectColumn" text="☑" prefWidth="40"/>
                             <TableColumn fx:id="idColumn" text="Booking ID" prefWidth="120"/>
                             <TableColumn fx:id="dateColumn" text="Date" prefWidth="100"/>
-                            <TableColumn fx:id="timeColumn" text="Time" prefWidth="80"/> 
+                            <TableColumn fx:id="timeColumn" text="Time" prefWidth="80"/>
                             <TableColumn fx:id="customerNameColumn" text="Customer" prefWidth="150"/>
                             <TableColumn fx:id="vehicleColumn" text="Vehicle" prefWidth="150"/>
                             <TableColumn fx:id="mechanicColumn" text="Mechanic" prefWidth="120"/>
-                            <TableColumn fx:id="serviceTypeColumn" text="Service Type" prefWidth="120"/>
                             <TableColumn fx:id="statusColumn" text="Status" prefWidth="100"/>
-                            <TableColumn fx:id="actionsColumn" text="Actions" prefWidth="200"/>
+                            <TableColumn fx:id="actionsColumn" text="Actions" prefWidth="250"/>
                         </columns>
                     </TableView>
                 </content>

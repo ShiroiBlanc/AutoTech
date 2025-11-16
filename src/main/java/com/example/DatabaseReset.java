@@ -18,7 +18,7 @@ public class DatabaseReset {
             // First, connect to MySQL server without specifying database
             String url = "jdbc:mysql://localhost:3306";
             String user = "root";
-            String password = "1234";
+            String password = "root";
             
             try (Connection conn = DriverManager.getConnection(url, user, password);
                  Statement stmt = conn.createStatement()) {
