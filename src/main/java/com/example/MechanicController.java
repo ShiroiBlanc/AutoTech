@@ -14,7 +14,7 @@ import javafx.geometry.Pos;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -74,9 +74,9 @@ public class MechanicController {
     public void initialize() {
         System.out.println("Initializing MechanicController...");
         
-        // Check user role and hide Add button for cashiers
+        // Check user role and hide button for non-admins
         User currentUser = UserService.getInstance().getCurrentUser();
-        if (currentUser != null && currentUser.getRole() == User.UserRole.CASHIER) {
+        if (currentUser == null || currentUser.getRole() != User.UserRole.ADMIN) {
             if (addMechanicButton != null) {
                 addMechanicButton.setVisible(false);
                 addMechanicButton.setManaged(false);
@@ -223,11 +223,11 @@ public class MechanicController {
     
     @FXML
     private void handleAddMechanic() {
-        // Double-check role permission
+        // Double-check role permission - admin only
         User currentUser = UserService.getInstance().getCurrentUser();
-        if (currentUser != null && currentUser.getRole() == User.UserRole.CASHIER) {
+        if (currentUser == null || currentUser.getRole() != User.UserRole.ADMIN) {
             showAlert(Alert.AlertType.ERROR, "Access Denied", 
-                     "Cashiers do not have permission to add mechanics.");
+                     "Only administrators can set mechanic specialties.");
             return;
         }
         showMechanicDialog(null);
@@ -460,9 +460,6 @@ public class MechanicController {
         // Change User to MechanicService.User for the ComboBox
         ComboBox<MechanicService.User> userComboBox = new ComboBox<>();
         
-        TextField nameField = new TextField();
-        nameField.setPromptText("Name");
-        
         // Multiple specialties selection with checkboxes
         VBox specialtiesBox = new VBox(5);
         Label specialtiesLabel = new Label("Specialties (select all that apply):");
@@ -520,7 +517,6 @@ public class MechanicController {
         
         // Set existing values if editing
         if (mechanic != null) {
-            nameField.setText(mechanic.getName());
             // Pre-select existing specialties
             try {
                 Mechanic fullMechanic = mechanicService.getAllMechanics().stream()
@@ -558,10 +554,8 @@ public class MechanicController {
         
         grid.add(new Label("User:"), 0, 0);
         grid.add(userComboBox, 1, 0);
-        grid.add(new Label("Name:"), 0, 1);
-        grid.add(nameField, 1, 1);
-        grid.add(specialtiesLabel, 0, 2);
-        grid.add(specialtiesScrollPane, 1, 2);
+        grid.add(specialtiesLabel, 0, 1);
+        grid.add(specialtiesScrollPane, 1, 1);
         
         // Remove specialty field as it's managed in admin panel
         
@@ -571,15 +565,9 @@ public class MechanicController {
         dialog.setResultConverter(dialogButton -> {
             if (dialogButton == saveButtonType) {
                 MechanicService.User selectedUser = userComboBox.getValue();
-                String name = nameField.getText().trim();
                 
                 if (selectedUser == null) {
                     showAlert(Alert.AlertType.ERROR, "Error", "Please select a user");
-                    return null;
-                }
-                
-                if (name.isEmpty()) {
-                    showAlert(Alert.AlertType.ERROR, "Error", "Name is required");
                     return null;
                 }
                 
@@ -611,10 +599,10 @@ public class MechanicController {
                     
                     if (mechanic == null) {
                         // Add new mechanic with selected specialties
-                        success = mechanicService.addMechanic(selectedUser.getId(), name, specialtiesStr);
+                        success = mechanicService.addMechanic(selectedUser.getId(), selectedUser.getUsername(), specialtiesStr);
                     } else {
                         // Update existing mechanic with new specialties
-                        success = mechanicService.updateMechanic(mechanic.getId(), selectedUser.getId(), name, specialtiesStr);
+                        success = mechanicService.updateMechanic(mechanic.getId(), selectedUser.getId(), selectedUser.getUsername(), specialtiesStr);
                     }
                     
                     if (success) {

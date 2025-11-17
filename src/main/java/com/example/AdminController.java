@@ -8,9 +8,10 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.GridPane;  // Added missing import
+import javafx.scene.layout.VBox;
 import javafx.geometry.Pos;
 import javafx.geometry.Insets;  // Added missing import
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.List;
 import com.example.User.UserRole;
 
@@ -312,5 +313,258 @@ public class AdminController {
         alert.setTitle(title);
         alert.setContentText(content);
         alert.showAndWait();
+    }
+    
+    @FXML
+    private void handleManageServiceLaborCosts() {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("Manage Service Labor Costs");
+        dialog.setHeaderText("Set labor costs for different service types");
+        
+        ButtonType closeButtonType = new ButtonType("Close", ButtonBar.ButtonData.CANCEL_CLOSE);
+        dialog.getDialogPane().getButtonTypes().add(closeButtonType);
+        
+        VBox mainBox = new VBox(15);
+        mainBox.setPadding(new Insets(20));
+        mainBox.setPrefWidth(600);
+        
+        // Instructions
+        Label instructions = new Label(
+            "Define standard labor costs for common services. These serve as defaults when creating service records."
+        );
+        instructions.setWrapText(true);
+        instructions.setStyle("-fx-font-size: 12; -fx-text-fill: #555;");
+        mainBox.getChildren().add(instructions);
+        
+        // Labor costs will be loaded from database
+        
+        // Table to display service types
+        TableView<ServiceLaborCost> table = new TableView<>();
+        ObservableList<ServiceLaborCost> laborCostList = FXCollections.observableArrayList();
+        
+        TableColumn<ServiceLaborCost, String> serviceCol = new TableColumn<>("Service Type");
+        serviceCol.setCellValueFactory(new PropertyValueFactory<>("serviceType"));
+        serviceCol.setPrefWidth(300);
+        
+        TableColumn<ServiceLaborCost, Double> costCol = new TableColumn<>("Labor Cost (₱)");
+        costCol.setCellValueFactory(new PropertyValueFactory<>("laborCost"));
+        costCol.setPrefWidth(200);
+        
+        TableColumn<ServiceLaborCost, Void> actionsCol = new TableColumn<>("Actions");
+        actionsCol.setPrefWidth(80);
+        
+        actionsCol.setCellFactory(col -> new TableCell<ServiceLaborCost, Void>() {
+            private final Button editButton = new Button("Edit");
+            
+            {
+                editButton.setOnAction(e -> {
+                    ServiceLaborCost cost = getTableRow().getItem();
+                    if (cost != null) {
+                        showEditLaborCostDialog(cost, laborCostList);
+                    }
+                });
+            }
+            
+            @Override
+            protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                setGraphic(empty ? null : editButton);
+            }
+        });
+        
+        table.getColumns().addAll(serviceCol, costCol, actionsCol);
+        
+        // Load labor costs from database
+        loadLaborCostsFromDatabase(laborCostList);
+        
+        table.setItems(laborCostList);
+        table.setPrefHeight(400);
+        mainBox.getChildren().add(table);
+        
+        // Add custom service button
+        HBox buttonBox = new HBox(10);
+        buttonBox.setAlignment(Pos.CENTER_LEFT);
+        Button addCustomButton = new Button("Add Custom Service");
+        addCustomButton.setOnAction(e -> showAddCustomServiceDialog(laborCostList));
+        buttonBox.getChildren().add(addCustomButton);
+        mainBox.getChildren().add(buttonBox);
+        
+        // Note
+        Label note = new Label(
+            "Note: These labor costs are used when calculating billing amounts for services."
+        );
+        note.setWrapText(true);
+        note.setStyle("-fx-font-size: 11; -fx-text-fill: #888; -fx-font-style: italic;");
+        mainBox.getChildren().add(note);
+        
+        dialog.getDialogPane().setContent(mainBox);
+        dialog.showAndWait();
+    }
+    
+    private void loadLaborCostsFromDatabase(ObservableList<ServiceLaborCost> list) {
+        try (Connection conn = DatabaseUtil.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT service_type, labor_cost FROM service_labor_costs ORDER BY service_type")) {
+            
+            list.clear();
+            while (rs.next()) {
+                list.add(new ServiceLaborCost(
+                    rs.getString("service_type"),
+                    rs.getDouble("labor_cost")
+                ));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Database Error", "Failed to load labor costs: " + e.getMessage());
+        }
+    }
+    
+    private void showEditLaborCostDialog(ServiceLaborCost cost, ObservableList<ServiceLaborCost> list) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("Edit Labor Cost");
+        dialog.setHeaderText("Edit labor cost for: " + cost.getServiceType());
+        
+        ButtonType saveButtonType = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveButtonType, ButtonType.CANCEL);
+        
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        grid.setPadding(new Insets(20));
+        
+        TextField costField = new TextField(String.valueOf(cost.getLaborCost()));
+        
+        grid.add(new Label("Labor Cost (₱):"), 0, 0);
+        grid.add(costField, 1, 0);
+        
+        dialog.getDialogPane().setContent(grid);
+        
+        dialog.setResultConverter(dialogButton -> {
+            if (dialogButton == saveButtonType) {
+                try {
+                    double newCost = Double.parseDouble(costField.getText());
+                    
+                    if (newCost < 0) {
+                        showAlert(Alert.AlertType.ERROR, "Invalid Input", "Cost cannot be negative");
+                        return null;
+                    }
+                    
+                    // Update in database
+                    try (Connection conn = DatabaseUtil.getConnection();
+                         PreparedStatement stmt = conn.prepareStatement(
+                             "UPDATE service_labor_costs SET labor_cost = ? WHERE service_type = ?")) {
+                        
+                        stmt.setDouble(1, newCost);
+                        stmt.setString(2, cost.getServiceType());
+                        stmt.executeUpdate();
+                        
+                        // Update UI
+                        cost.setLaborCost(newCost);
+                        list.set(list.indexOf(cost), cost);
+                        
+                        showAlert(Alert.AlertType.INFORMATION, "Success", "Labor cost updated successfully");
+                        
+                    } catch (SQLException e) {
+                        e.printStackTrace();
+                        showAlert(Alert.AlertType.ERROR, "Database Error", "Failed to update: " + e.getMessage());
+                    }
+                    
+                } catch (NumberFormatException e) {
+                    showAlert(Alert.AlertType.ERROR, "Invalid Input", "Please enter a valid number");
+                }
+            }
+            return null;
+        });
+        
+        dialog.showAndWait();
+    }
+    
+    private void showAddCustomServiceDialog(ObservableList<ServiceLaborCost> list) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("Add Custom Service");
+        dialog.setHeaderText("Add a custom service labor cost");
+        
+        ButtonType addButtonType = new ButtonType("Add", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(addButtonType, ButtonType.CANCEL);
+        
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        grid.setPadding(new Insets(20));
+        
+        TextField serviceField = new TextField();
+        serviceField.setPromptText("Service Type");
+        TextField costField = new TextField();
+        costField.setPromptText("Labor Cost");
+        
+        grid.add(new Label("Service Type:"), 0, 0);
+        grid.add(serviceField, 1, 0);
+        grid.add(new Label("Labor Cost (₱):"), 0, 1);
+        grid.add(costField, 1, 1);
+        
+        dialog.getDialogPane().setContent(grid);
+        
+        dialog.setResultConverter(dialogButton -> {
+            if (dialogButton == addButtonType) {
+                try {
+                    String service = serviceField.getText().trim();
+                    double laborCost = Double.parseDouble(costField.getText());
+                    
+                    if (service.isEmpty()) {
+                        showAlert(Alert.AlertType.ERROR, "Invalid Input", "Service type cannot be empty");
+                        return null;
+                    }
+                    
+                    if (laborCost < 0) {
+                        showAlert(Alert.AlertType.ERROR, "Invalid Input", "Cost cannot be negative");
+                        return null;
+                    }
+                    
+                    // Insert into database
+                    try (Connection conn = DatabaseUtil.getConnection();
+                         PreparedStatement stmt = conn.prepareStatement(
+                             "INSERT INTO service_labor_costs (service_type, labor_cost) VALUES (?, ?) " +
+                             "ON DUPLICATE KEY UPDATE labor_cost = ?")) {
+                        
+                        stmt.setString(1, service);
+                        stmt.setDouble(2, laborCost);
+                        stmt.setDouble(3, laborCost);
+                        stmt.executeUpdate();
+                        
+                        // Reload table
+                        loadLaborCostsFromDatabase(list);
+                        
+                        showAlert(Alert.AlertType.INFORMATION, "Success", "Service type added successfully");
+                        
+                    } catch (SQLException e) {
+                        e.printStackTrace();
+                        showAlert(Alert.AlertType.ERROR, "Database Error", "Failed to add service: " + e.getMessage());
+                    }
+                    
+                } catch (NumberFormatException e) {
+                    showAlert(Alert.AlertType.ERROR, "Invalid Input", "Please enter a valid number for cost");
+                }
+            }
+            return null;
+        });
+        
+        dialog.showAndWait();
+    }
+    
+    // Inner class for ServiceLaborCost
+    public static class ServiceLaborCost {
+        private String serviceType;
+        private double laborCost;
+        
+        public ServiceLaborCost(String serviceType, double laborCost) {
+            this.serviceType = serviceType;
+            this.laborCost = laborCost;
+        }
+        
+        public String getServiceType() { return serviceType; }
+        public void setServiceType(String serviceType) { this.serviceType = serviceType; }
+        
+        public double getLaborCost() { return laborCost; }
+        public void setLaborCost(double laborCost) { this.laborCost = laborCost; }
     }
 }

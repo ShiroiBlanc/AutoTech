@@ -4,11 +4,9 @@ import java.sql.*;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 
 public class BillingService {
     private static BillingService instance;
-    private static final Random random = new Random();
     
     private BillingService() {
         // Constructor no longer needs to create tables
@@ -146,31 +144,39 @@ public class BillingService {
         }
     }
     
-    // Separate method to calculate amount based on service type
+    // Get labor cost for a service type from database
     private double calculateAmountByServiceType(String serviceType) {
-        // Set prices based on service type
-        switch (serviceType) {
-            case "Regular Maintenance":
-                return 1000.00;
-            case "Oil Change":
-                return 500.00;
-            case "Tire Service":
-                // Random value from {200, 500, 800}
-                int[] tireServicePrices = {200, 500, 800};
-                return tireServicePrices[random.nextInt(tireServicePrices.length)];
-            case "Brake Service":
-                return 500.00;
-            case "Engine Repair":
-                return 2000.00;
-            case "Transmission Service":
-                return 4000.00;
-            case "Electrical System":
-                return 1500.00;
-            default:
-                // For "Other" - random value ending with 00
-                int hundreds = random.nextInt(10) + 1; // 1-10 (hundreds)
-                return hundreds * 100.00; // 100, 200, ..., 1000
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                 "SELECT labor_cost FROM service_labor_costs WHERE service_type = ?")) {
+            
+            stmt.setString(1, serviceType);
+            ResultSet rs = stmt.executeQuery();
+            
+            if (rs.next()) {
+                return rs.getDouble("labor_cost");
+            } else {
+                // If service type not found, try "Other" as fallback
+                PreparedStatement fallbackStmt = conn.prepareStatement(
+                    "SELECT labor_cost FROM service_labor_costs WHERE service_type = 'Other'");
+                ResultSet fallbackRs = fallbackStmt.executeQuery();
+                
+                if (fallbackRs.next()) {
+                    return fallbackRs.getDouble("labor_cost");
+                }
+                
+                fallbackRs.close();
+                fallbackStmt.close();
+            }
+            
+            rs.close();
+            
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
+        
+        // Ultimate fallback if database query fails
+        return 500.00;
     }
     
     public Bill getBillByServiceId(int serviceId) throws SQLException {

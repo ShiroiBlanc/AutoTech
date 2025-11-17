@@ -27,5 +27,7 @@
     
     <HBox spacing="10" alignment="CENTER_RIGHT">
         <Button text="Add New User" onAction="#handleAddUser"/>
+        <Button text="Manage Service Labor Costs" onAction="#handleManageServiceLaborCosts" 
+                style="-fx-background-color: #2ecc71; -fx-text-fill: white; -fx-font-weight: bold;"/>
     </HBox>
 </VBox>

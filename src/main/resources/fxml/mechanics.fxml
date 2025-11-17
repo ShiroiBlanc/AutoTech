@@ -20,7 +20,7 @@
             <HBox>
                 <Label fx:id="totalMechanicsLabel" text="Total mechanics: 0"/>
                 <Region HBox.hgrow="ALWAYS" />
-                <Button fx:id="addMechanicButton" text="Add New Mechanic" onAction="#handleAddMechanic"/>
+                <Button fx:id="addMechanicButton" text="Set Specialty" onAction="#handleAddMechanic"/>
             </HBox>
             
             <Label fx:id="statusLabel" style="-fx-text-fill: green;"/>
