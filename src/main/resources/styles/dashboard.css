@@ -1,0 +1,28 @@
+/* Navigation button default style */
+.nav-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #ecf0f1;
+    -fx-font-size: 14px;
+    -fx-padding: 12 15;
+    -fx-cursor: hand;
+    -fx-background-radius: 5;
+    -fx-border-radius: 5;
+    -fx-alignment: CENTER_LEFT;
+}
+
+/* Navigation button hover */
+.nav-button:hover {
+    -fx-background-color: rgba(52, 73, 94, 0.5);
+}
+
+/* Active navigation button */
+.nav-button-active {
+    -fx-background-color: #3498db;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+}
+
+/* Active navigation button hover */
+.nav-button-active:hover {
+    -fx-background-color: #2980b9;
+}

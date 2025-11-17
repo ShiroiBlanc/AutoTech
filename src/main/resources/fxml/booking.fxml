@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<BorderPane xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" 
+            fx:controller="com.example.ServiceBookingController">
+    <top>
+        <VBox spacing="10" style="-fx-padding: 10;">
+            <HBox spacing="10" alignment="CENTER_LEFT">
+                <Label text="Service Bookings Management" style="-fx-font-size: 24; -fx-font-weight: bold;"/>
+                <Region HBox.hgrow="ALWAYS" />
+                <TextField fx:id="searchField" promptText="Search bookings..." prefWidth="200"/>
+                <ComboBox fx:id="filterStatusComboBox" promptText="Filter by status" prefWidth="150"/>
+                <DatePicker fx:id="filterDatePicker" promptText="Filter by date" prefWidth="150"/>
+                <Button text="Search" onAction="#handleSearchBookings"/>
+                <Button text="Refresh" onAction="#handleRefreshBookings"/>
+            </HBox>
+            
+            <HBox>
+                <Label fx:id="totalBookingsLabel" text="Total bookings: 0"/>
+                <Region HBox.hgrow="ALWAYS" />
+                <Button text="Add New Booking" onAction="#handleAddBooking"/>
+            </HBox>
+            
+            <Label fx:id="statusLabel" style="-fx-text-fill: green;"/>
+        </VBox>
+    </top>
+    
+    <center>
+        <TabPane fx:id="bookingTabPane">
+            <Tab text="All Bookings" closable="false">
+                <content>
+                    <VBox>
+                        <TableView fx:id="bookingTable" VBox.vgrow="ALWAYS">
+                            <columns>
+                                <TableColumn fx:id="idColumn" text="Booking ID" prefWidth="100"/>
+                                <TableColumn fx:id="dateColumn" text="Date" prefWidth="85"/>
+                                <TableColumn fx:id="timeColumn" text="Time" prefWidth="65"/>
+                                <TableColumn fx:id="customerNameColumn" text="Customer" prefWidth="120"/>
+                                <TableColumn fx:id="vehicleColumn" text="Vehicle" prefWidth="130"/>
+                                <TableColumn fx:id="mechanicColumn" text="Mechanic" prefWidth="100"/>
+                                <TableColumn fx:id="statusColumn" text="Status" prefWidth="85"/>
+                                <TableColumn fx:id="actionsColumn" text="Actions" prefWidth="200"/>
+                            </columns>
+                        </TableView>
+                        <Pagination fx:id="bookingPagination" pageCount="1"/>
+                    </VBox>
+                </content>
+            </Tab>
+        </TabPane>
+    </center>
+</BorderPane>

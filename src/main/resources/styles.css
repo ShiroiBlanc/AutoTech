@@ -1,0 +1,23 @@
+/* Highlight selected tab */
+.tab-pane .tab:selected {
+    -fx-background-color: #1976D2;
+}
+
+.tab-pane .tab:selected .tab-label {
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+}
+
+/* Unselected tabs */
+.tab-pane .tab {
+    -fx-background-color: #E3F2FD;
+}
+
+.tab-pane .tab .tab-label {
+    -fx-text-fill: #424242;
+}
+
+/* Hover effect */
+.tab-pane .tab:hover {
+    -fx-background-color: #BBDEFB;
+}

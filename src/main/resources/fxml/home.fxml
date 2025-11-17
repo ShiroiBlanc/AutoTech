@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.text.Font?>
+
+<VBox xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" 
+      fx:controller="com.example.HomeController"
+      spacing="20" style="-fx-background-color: #f5f5f5;">
+    
+    <padding>
+        <Insets top="30" right="30" bottom="30" left="30"/>
+    </padding>
+    
+    <!-- Header Section -->
+    <VBox spacing="5">
+        <Label fx:id="welcomeLabel" text="Hello, Admin!" 
+               style="-fx-font-size: 32px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;">
+            <font>
+                <Font name="System Bold" size="32"/>
+            </font>
+        </Label>
+        
+        <HBox spacing="20">
+            <Label fx:id="dateTimeLabel" text="Monday, January 01, 2025 - 12:00 PM" 
+                   style="-fx-font-size: 14px; -fx-text-fill: #7f8c8d;"/>
+            <Region HBox.hgrow="ALWAYS"/>
+            <Label fx:id="roleLabel" text="Role: Administrator" 
+                   style="-fx-font-size: 14px; -fx-text-fill: #7f8c8d; -fx-font-weight: bold;"/>
+        </HBox>
+    </VBox>
+    
+    <!-- Statistics Cards -->
+    <HBox spacing="20" VBox.vgrow="NEVER">
+        <!-- Total Customers Card -->
+        <VBox spacing="10" style="-fx-background-color: white; -fx-background-radius: 10; 
+                                   -fx-padding: 20; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0, 0, 2);"
+              HBox.hgrow="ALWAYS">
+            <Label text="Total Customers" style="-fx-font-size: 14px; -fx-text-fill: #7f8c8d;"/>
+            <Label fx:id="totalCustomersLabel" text="0" 
+                   style="-fx-font-size: 36px; -fx-font-weight: bold; -fx-text-fill: #3498db;">
+                <font>
+                    <Font name="System Bold" size="36"/>
+                </font>
+            </Label>
+            <Label text="📋 Registered" style="-fx-font-size: 12px; -fx-text-fill: #95a5a6;"/>
+        </VBox>
+        
+        <!-- Total Bookings Card -->
+        <VBox spacing="10" style="-fx-background-color: white; -fx-background-radius: 10; 
+                                   -fx-padding: 20; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0, 0, 2);"
+              HBox.hgrow="ALWAYS">
+            <Label text="Total Bookings" style="-fx-font-size: 14px; -fx-text-fill: #7f8c8d;"/>
+            <Label fx:id="totalBookingsLabel" text="0" 
+                   style="-fx-font-size: 36px; -fx-font-weight: bold; -fx-text-fill: #9b59b6;">
+                <font>
+                    <Font name="System Bold" size="36"/>
+                </font>
+            </Label>
+            <Label text="📅 All Time" style="-fx-font-size: 12px; -fx-text-fill: #95a5a6;"/>
+        </VBox>
+        
+        <!-- Pending Bookings Card -->
+        <VBox spacing="10" style="-fx-background-color: white; -fx-background-radius: 10; 
+                                   -fx-padding: 20; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0, 0, 2);"
+              HBox.hgrow="ALWAYS">
+            <Label text="Pending/Active" style="-fx-font-size: 14px; -fx-text-fill: #7f8c8d;"/>
+            <Label fx:id="pendingBookingsLabel" text="0" 
+                   style="-fx-font-size: 36px; -fx-font-weight: bold; -fx-text-fill: #f39c12;">
+                <font>
+                    <Font name="System Bold" size="36"/>
+                </font>
+            </Label>
+            <Label text="⏳ In Progress" style="-fx-font-size: 12px; -fx-text-fill: #95a5a6;"/>
+        </VBox>
+        
+        <!-- Low Stock Items Card -->
+        <VBox spacing="10" style="-fx-background-color: white; -fx-background-radius: 10; 
+                                   -fx-padding: 20; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0, 0, 2);"
+              HBox.hgrow="ALWAYS">
+            <Label text="Low Stock Items" style="-fx-font-size: 14px; -fx-text-fill: #7f8c8d;"/>
+            <Label fx:id="lowStockItemsLabel" text="0" 
+                   style="-fx-font-size: 36px; -fx-font-weight: bold; -fx-text-fill: #e74c3c;">
+                <font>
+                    <Font name="System Bold" size="36"/>
+                </font>
+            </Label>
+            <Label text="⚠️ Alert" style="-fx-font-size: 12px; -fx-text-fill: #95a5a6;"/>
+        </VBox>
+    </HBox>
+    
+    <!-- Notifications Section -->
+    <VBox spacing="15" VBox.vgrow="ALWAYS" style="-fx-background-color: white; -fx-background-radius: 10; 
+                                                    -fx-padding: 20; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0, 0, 2);">
+        <!-- Notifications Header -->
+        <HBox spacing="10" alignment="CENTER_LEFT">
+            <Label text="🔔 Notifications" 
+                   style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;">
+                <font>
+                    <Font name="System Bold" size="20"/>
+                </font>
+            </Label>
+            <Label fx:id="notificationCountLabel" text="0" 
+                   style="-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-padding: 5 10; 
+                          -fx-background-radius: 15; -fx-font-size: 12px; -fx-font-weight: bold;"/>
+            <Region HBox.hgrow="ALWAYS"/>
+            <Button fx:id="timeInButton" text="⏰ Time In" onAction="#handleTimeIn" 
+                    visible="false" managed="false"
+                    style="-fx-background-color: #27ae60; -fx-text-fill: white; 
+                           -fx-background-radius: 5; -fx-padding: 10 20; -fx-cursor: hand; 
+                           -fx-font-size: 14px; -fx-font-weight: bold;">
+                <font>
+                    <Font size="14"/>
+                </font>
+            </Button>
+            <Button text="Refresh" onAction="#handleRefresh" 
+                    style="-fx-background-color: #3498db; -fx-text-fill: white; 
+                           -fx-background-radius: 5; -fx-padding: 8 15; -fx-cursor: hand;">
+                <font>
+                    <Font size="12"/>
+                </font>
+            </Button>
+        </HBox>
+        
+        <Separator/>
+        
+        <!-- Notifications Container (Scrollable) -->
+        <ScrollPane fitToWidth="true" VBox.vgrow="ALWAYS" 
+                    style="-fx-background-color: transparent; -fx-background: transparent;">
+            <VBox fx:id="notificationsContainer" spacing="10" 
+                  style="-fx-background-color: transparent;">
+                <padding>
+                    <Insets top="5" right="5" bottom="5" left="5"/>
+                </padding>
+            </VBox>
+        </ScrollPane>
+    </VBox>
+</VBox>

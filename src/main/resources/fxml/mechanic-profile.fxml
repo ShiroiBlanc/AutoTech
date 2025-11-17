@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.text.*?>
+
+<VBox xmlns="http://javafx.com/javafx/17" 
+      xmlns:fx="http://javafx.com/fxml/1" 
+      fx:controller="com.example.MechanicProfileController"
+      spacing="20" style="-fx-background-color: white;">
+    
+    <padding>
+        <Insets top="20" right="20" bottom="20" left="20"/>
+    </padding>
+    
+    <!-- Header -->
+    <HBox alignment="CENTER_LEFT" spacing="10">
+        <Label text="My Profile" style="-fx-font-size: 24; -fx-font-weight: bold;"/>
+    </HBox>
+    
+    <Separator/>
+    
+    <!-- Profile Information Card -->
+    <VBox spacing="15" style="-fx-background-color: #f8f9fa; -fx-padding: 20; -fx-background-radius: 5;">
+        <Label text="Profile Information" style="-fx-font-size: 18; -fx-font-weight: bold;"/>
+        
+        <GridPane hgap="15" vgap="15">
+            <columnConstraints>
+                <ColumnConstraints minWidth="120" halignment="RIGHT"/>
+                <ColumnConstraints hgrow="ALWAYS"/>
+            </columnConstraints>
+            
+            <Label text="Name:" style="-fx-font-weight: bold;" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+            <Label fx:id="nameLabel" text="" style="-fx-font-size: 14;" GridPane.columnIndex="1" GridPane.rowIndex="0"/>
+            
+            <Label text="Username:" style="-fx-font-weight: bold;" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
+            <Label fx:id="usernameLabel" text="" style="-fx-font-size: 14;" GridPane.columnIndex="1" GridPane.rowIndex="1"/>
+            
+            <Label text="Email:" style="-fx-font-weight: bold;" GridPane.columnIndex="0" GridPane.rowIndex="2"/>
+            <Label fx:id="emailLabel" text="" style="-fx-font-size: 14;" GridPane.columnIndex="1" GridPane.rowIndex="2"/>
+            
+            <Label text="Specialties:" style="-fx-font-weight: bold;" GridPane.columnIndex="0" GridPane.rowIndex="3"/>
+            <Label fx:id="specialtiesLabel" text="" wrapText="true" style="-fx-font-size: 14;" GridPane.columnIndex="1" GridPane.rowIndex="3"/>
+        </GridPane>
+    </VBox>
+    
+    <!-- Status Control Card -->
+    <VBox spacing="15" style="-fx-background-color: #f8f9fa; -fx-padding: 20; -fx-background-radius: 5;">
+        <Label text="Availability Status" style="-fx-font-size: 18; -fx-font-weight: bold;"/>
+        
+        <HBox spacing="20" alignment="CENTER_LEFT">
+            <Label text="Current Status:" style="-fx-font-weight: bold; -fx-font-size: 14;"/>
+            <Label fx:id="currentStatusLabel" text="Available" 
+                   style="-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #27ae60; -fx-padding: 5 15; -fx-background-color: #d5f4e6; -fx-background-radius: 15;"/>
+        </HBox>
+        
+        <VBox spacing="10">
+            <Label text="Update Status:" style="-fx-font-weight: bold;"/>
+            <HBox spacing="10">
+                <ComboBox fx:id="statusComboBox" promptText="Select Status" prefWidth="200">
+                </ComboBox>
+                <Button text="Update Status" onAction="#updateStatus" 
+                        style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 20;"/>
+            </HBox>
+        </VBox>
+        
+        <Label text="Note: Changing your status to 'Off Duty' or 'Busy' will automatically mark your scheduled bookings as delayed." 
+               wrapText="true" style="-fx-font-size: 12; -fx-text-fill: #7f8c8d; -fx-font-style: italic;"/>
+    </VBox>
+    
+    <!-- Current Jobs Card -->
+    <VBox spacing="15" style="-fx-background-color: #f8f9fa; -fx-padding: 20; -fx-background-radius: 5;">
+        <Label text="My Current Jobs" style="-fx-font-size: 18; -fx-font-weight: bold;"/>
+        
+        <HBox spacing="30">
+            <VBox alignment="CENTER" spacing="5">
+                <Label text="Scheduled" style="-fx-font-weight: bold; -fx-text-fill: #7f8c8d;"/>
+                <Label fx:id="scheduledCountLabel" text="0" style="-fx-font-size: 32; -fx-font-weight: bold; -fx-text-fill: #3498db;"/>
+            </VBox>
+            
+            <VBox alignment="CENTER" spacing="5">
+                <Label text="In Progress" style="-fx-font-weight: bold; -fx-text-fill: #7f8c8d;"/>
+                <Label fx:id="inProgressCountLabel" text="0" style="-fx-font-size: 32; -fx-font-weight: bold; -fx-text-fill: #f39c12;"/>
+            </VBox>
+            
+            <VBox alignment="CENTER" spacing="5">
+                <Label text="Delayed" style="-fx-font-weight: bold; -fx-text-fill: #7f8c8d;"/>
+                <Label fx:id="delayedCountLabel" text="0" style="-fx-font-size: 32; -fx-font-weight: bold; -fx-text-fill: #e74c3c;"/>
+            </VBox>
+            
+            <VBox alignment="CENTER" spacing="5">
+                <Label text="Completed" style="-fx-font-weight: bold; -fx-text-fill: #7f8c8d;"/>
+                <Label fx:id="completedCountLabel" text="0" style="-fx-font-size: 32; -fx-font-weight: bold; -fx-text-fill: #27ae60;"/>
+            </VBox>
+        </HBox>
+    </VBox>
+    
+</VBox>

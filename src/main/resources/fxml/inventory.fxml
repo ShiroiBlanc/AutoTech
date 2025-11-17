@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<BorderPane xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" 
+            fx:controller="com.example.InventoryController">
+    <top>
+        <VBox spacing="10" style="-fx-padding: 10;">
+            <HBox spacing="10" alignment="CENTER_LEFT">
+                <Label text="Inventory Management" style="-fx-font-size: 24; -fx-font-weight: bold;"/>
+                <Region HBox.hgrow="ALWAYS" />
+                <TextField fx:id="searchField" promptText="Search inventory..." prefWidth="200"/>
+                <Button text="Search" onAction="#handleSearch"/>
+                <Button text="Refresh" onAction="#handleRefresh"/>
+            </HBox>
+            
+            <HBox>
+                <Label fx:id="statusLabel" style="-fx-text-fill: green;"/>
+                <Region HBox.hgrow="ALWAYS" />
+                <Button fx:id="addItemButton" text="Add New Item" onAction="#handleAddItem"/>
+            </HBox>
+        </VBox>
+    </top>
+    
+    <center>
+        <VBox>
+            <TableView fx:id="inventoryTable" VBox.vgrow="ALWAYS">
+                <columns>
+                    <TableColumn fx:id="partNumberColumn" text="Part ID" prefWidth="90"/>
+                    <TableColumn fx:id="nameColumn" text="Item Name" prefWidth="140"/>
+                    <TableColumn fx:id="categoryColumn" text="Category" prefWidth="85"/> 
+                    <TableColumn fx:id="quantityColumn" text="Stock" prefWidth="55"/>
+                    <TableColumn fx:id="reservedColumn" text="Reserved" prefWidth="65"/>
+                    <TableColumn fx:id="availableColumn" text="Available" prefWidth="70"/>
+                    <TableColumn fx:id="expirationColumn" text="Expiration" prefWidth="85"/>
+                    <TableColumn fx:id="priceColumn" text="Price" prefWidth="65"/>
+                    <TableColumn fx:id="locationColumn" text="Location" prefWidth="75"/>
+                    <TableColumn fx:id="actionsColumn" text="Actions" prefWidth="150"/>
+                </columns>
+            </TableView>
+            <Pagination fx:id="inventoryPagination" pageCount="1"/>
+        </VBox>
+    </center>
+</BorderPane>
